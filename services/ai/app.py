@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional
+import os
 import re
 
 app = FastAPI(
@@ -252,3 +253,13 @@ def rank_providers(payload: MatchingInput):
         'total_evaluated': len(payload.providers),
         'ranked_providers': ranked
     }
+
+
+if __name__ == '__main__':
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=os.getenv('AI_HOST', '0.0.0.0'),
+        port=int(os.getenv('AI_PORT', '8000')),
+    )

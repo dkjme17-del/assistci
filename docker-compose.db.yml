@@ -1,0 +1,28 @@
+# Base PostgreSQL auto-hébergée (optionnelle).
+# Utilisez ce fichier en plus du compose principal si vous n'avez PAS de base
+# managée (Neon) :
+#   docker compose -f docker-compose.yml -f docker-compose.db.yml up -d
+# L'API attend que la base soit healthy avant de démarrer (migrations + serveur).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-assistci_db}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-assistci_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:

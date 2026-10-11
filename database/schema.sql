@@ -266,3 +266,19 @@ VALUES
   ('Électricité', 'electricite', 'Court-circuit, dépannage électrique et réparations diverses', 'zap'),
   ('Climatisation & Froid', 'froid', 'Réparation climatiseurs maison et automobile', 'fan')
 ON CONFLICT (slug) DO NOTHING;
+
+-- Compte administrateur par défaut (mot de passe : Admin123! — À CHANGER EN PRODUCTION)
+INSERT INTO users (first_name, last_name, email, phone, password_hash, role, verification_status, is_active, email_verified, phone_verified)
+VALUES (
+  'Superviseur',
+  'ASSISTCI',
+  'admin@assistci.ci',
+  '+2250100000000',
+  '$2b$10$a2SeqM9NGlkMdw8kak9BO.F7wq8bKOtuOTU66oZa./JJk9LkL7yiO',
+  'admin',
+  'verified',
+  true,
+  true,
+  true
+)
+ON CONFLICT (email) DO NOTHING;

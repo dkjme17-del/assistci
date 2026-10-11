@@ -10,6 +10,8 @@
     "api": "npm run dev --workspace @assistci/api",
     "build:web": "npm run build --workspace @assistci/web",
     "lint:web": "npm run lint --workspace @assistci/web",
+    "test:api": "npm run test --workspace @assistci/api",
+    "migrate:api": "npm run migrate:up --workspace @assistci/api",
     "ai": "cd services/ai && python app.py"
   }
 }

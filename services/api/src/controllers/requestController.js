@@ -1,9 +1,10 @@
 const db = require('../config/db');
+const aiService = require('../services/aiService');
 
 async function createRequest(req, res) {
   try {
     const clientId = req.user.userId;
-    const {
+    let {
       category_id,
       title,
       description,
@@ -11,14 +12,14 @@ async function createRequest(req, res) {
       vehicle_type,
       vehicle_brand,
       address_text,
-      location_type = 'city',
+      location_type,
       highway_axis,
       highway_milestone,
       city = 'Abidjan',
       district,
       latitude,
       longitude,
-      urgency = 'normal',
+      urgency,
     } = req.body;
 
     if (!category_id || !title || !description) {
@@ -26,6 +27,17 @@ async function createRequest(req, res) {
         error: 'Champs manquants',
         message: 'La catégorie, le titre et la description sont obligatoires',
       });
+    }
+
+    // Enrichissement automatique via le microservice IA (analyse en langage naturel)
+    const analysis = await aiService.analyzeRequest(description, district);
+    if (analysis) {
+      if (!breakdown_type || breakdown_type === 'other') breakdown_type = analysis.breakdown_type;
+      if (!location_type) location_type = analysis.location_type || 'city';
+      if (!highway_axis && analysis.highway_axis) highway_axis = analysis.highway_axis;
+      if (!district) district = analysis.detected_district;
+      if (!vehicle_brand && analysis.detected_brand) vehicle_brand = analysis.detected_brand;
+      if (!urgency) urgency = analysis.urgency;
     }
 
     const result = await db.query(
@@ -46,14 +58,14 @@ async function createRequest(req, res) {
         vehicle_type || null,
         vehicle_brand || null,
         address_text || null,
-        location_type,
+        location_type || 'city',
         highway_axis || null,
         highway_milestone || null,
         city,
         district || null,
         latitude || null,
         longitude || null,
-        urgency,
+        urgency || 'normal',
       ]
     );
 
@@ -88,14 +100,33 @@ async function getMyRequests(req, res) {
         [userId]
       );
     } else if (role === 'provider') {
-      // Pour un prestataire : demandes assignées ou en attente dans sa zone
+      // Pour un prestataire : demandes assignées, ou demandes ouvertes couvertes par ses zones
+      // (si le prestataire n'a défini aucune zone, il voit toutes les demandes ouvertes)
       result = await db.query(
         `SELECT sr.*, sc.name AS category_name, u.first_name AS client_first_name, u.phone AS client_phone
          FROM service_requests sr
          JOIN service_categories sc ON sr.category_id = sc.id
          JOIN users u ON sr.client_id = u.id
          WHERE sr.assigned_provider_id = (SELECT id FROM service_providers WHERE user_id = $1)
-            OR sr.status IN ('created', 'matching')
+            OR (
+              sr.status IN ('created', 'matching')
+              AND (
+                NOT EXISTS (
+                  SELECT 1 FROM service_areas sa
+                  WHERE sa.provider_id = (SELECT id FROM service_providers WHERE user_id = $1)
+                )
+                OR sr.district IN (
+                  SELECT sa.district FROM service_areas sa
+                  WHERE sa.provider_id = (SELECT id FROM service_providers WHERE user_id = $1)
+                    AND sa.district IS NOT NULL
+                )
+                OR sr.city IN (
+                  SELECT sa.city FROM service_areas sa
+                  WHERE sa.provider_id = (SELECT id FROM service_providers WHERE user_id = $1)
+                    AND sa.city IS NOT NULL
+                )
+              )
+            )
          ORDER BY sr.created_at DESC
          LIMIT 50`,
         [userId]

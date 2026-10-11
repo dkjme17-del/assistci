@@ -1,0 +1,13 @@
+{$DOMAIN} {
+	encode gzip
+
+	# API (le front appelle une URL relative /api => même origine, pas de CORS)
+	handle /api/* {
+		reverse_proxy api:4001
+	}
+
+	# Application web Next.js
+	handle {
+		reverse_proxy web:3001
+	}
+}

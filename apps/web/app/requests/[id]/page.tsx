@@ -16,7 +16,17 @@ import {
   DollarSign,
   MessageSquare,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { fetchApi, getCurrentUser } from '../../../lib/api';
+
+const InteractiveMap = dynamic(() => import('../../../components/InteractiveMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 text-xs">
+      Chargement de la carte OpenStreetMap...
+    </div>
+  ),
+});
 
 export default function RequestDetailPage() {
   const params = useParams();

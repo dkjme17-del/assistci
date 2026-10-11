@@ -1,0 +1,18 @@
+# Surcharge locale : expose les ports et n'active pas le proxy TLS.
+# Usage : docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+services:
+  api:
+    ports:
+      - "4001:4001"
+
+  ai:
+    ports:
+      - "8000:8000"
+
+  web:
+    ports:
+      - "3001:3001"
+
+  caddy:
+    profiles:
+      - donotstart

@@ -1,0 +1,65 @@
+name: assistci
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      # Base managée (ex. Neon) si fournie, sinon variables PG* ci-dessous.
+      DATABASE_URL: ${DATABASE_URL:-}
+      PGHOST: ${PGHOST:-localhost}
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE:-assistci_db}
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET est requis}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      AI_SERVICE_URL: http://ai:8000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4001/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  ai:
+    build:
+      context: .
+      dockerfile: services/ai/Dockerfile
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

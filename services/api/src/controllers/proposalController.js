@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { notify } = require('../services/notificationService');
 
 // Un prestataire soumet une proposition / devis chiffré
 async function createProposal(req, res) {
@@ -35,10 +36,24 @@ async function createProposal(req, res) {
     );
 
     // Mettre à jour le statut de la demande si elle était en attente
-    await db.query(
-      "UPDATE service_requests SET status = 'proposal_received', updated_at = NOW() WHERE id = $1 AND status IN ('created', 'matching')",
+    const reqOwnerRes = await db.query(
+      `UPDATE service_requests SET status = 'proposal_received', updated_at = NOW()
+       WHERE id = $1 AND status IN ('created', 'matching')
+       RETURNING client_id, title`,
       [requestId]
     );
+
+    // Notifier le client de la réception d'un devis
+    if (reqOwnerRes.rows.length > 0) {
+      await notify({
+        userId: reqOwnerRes.rows[0].client_id,
+        title: 'Nouveau devis reçu',
+        message: `Un prestataire a proposé ${proposed_price} FCFA pour votre demande "${reqOwnerRes.rows[0].title}".`,
+        type: 'proposal_received',
+        link: `/requests/${requestId}`,
+        metadata: { request_id: Number(requestId), proposal_id: proposalRes.rows[0].id },
+      });
+    }
 
     return res.status(201).json({
       message: 'Proposition de devis transmise au client avec succès',
@@ -90,6 +105,22 @@ async function acceptProposal(req, res) {
       [proposal.provider_id, proposal.req_id]
     );
 
+    // Notifier le prestataire que son devis est accepté
+    const providerUserRes = await db.query(
+      'SELECT user_id FROM service_providers WHERE id = $1',
+      [proposal.provider_id]
+    );
+    if (providerUserRes.rows.length > 0) {
+      await notify({
+        userId: providerUserRes.rows[0].user_id,
+        title: 'Devis accepté',
+        message: 'Le client a accepté votre devis. Vous pouvez démarrer l’intervention.',
+        type: 'proposal_accepted',
+        link: `/requests/${proposal.req_id}`,
+        metadata: { request_id: proposal.req_id },
+      });
+    }
+
     return res.json({
       message: 'Proposition acceptée. Le dépanneur a été notifié de votre confirmation.',
       request_id: proposal.req_id,
@@ -104,12 +135,38 @@ async function acceptProposal(req, res) {
 // Mettre à jour l'état d'avancement de l'intervention (ex: in_progress, completed, cancelled)
 async function updateRequestStatus(req, res) {
   try {
+    const userId = req.user.userId;
     const { id: requestId } = req.params;
     const { status, cancellation_reason } = req.body;
 
     const validStatuses = ['accepted', 'in_progress', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: `Statut invalide. Autorisés : ${validStatuses.join(', ')}` });
+    }
+
+    // Vérifier l'existence de la demande et l'autorisation de l'appelant
+    const ownerRes = await db.query(
+      `SELECT sr.client_id, sp.user_id AS provider_user_id
+       FROM service_requests sr
+       LEFT JOIN service_providers sp ON sr.assigned_provider_id = sp.id
+       WHERE sr.id = $1`,
+      [requestId]
+    );
+
+    if (ownerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Demande introuvable' });
+    }
+
+    const { client_id, provider_user_id } = ownerRes.rows[0];
+    const isAdmin = req.user.role === 'admin';
+    const isClientOwner = req.user.role === 'client' && client_id === userId;
+    const isAssignedProvider = req.user.role === 'provider' && provider_user_id === userId;
+
+    if (!isAdmin && !isClientOwner && !isAssignedProvider) {
+      return res.status(403).json({
+        error: 'Action non autorisée',
+        message: 'Seul le client propriétaire, le prestataire assigné ou un administrateur peut modifier cette demande',
+      });
     }
 
     const completedClause = status === 'completed' ? 'NOW()' : 'completed_at';
@@ -127,6 +184,19 @@ async function updateRequestStatus(req, res) {
 
     if (updateRes.rows.length === 0) {
       return res.status(404).json({ error: 'Demande introuvable' });
+    }
+
+    // Notifier l'autre partie du changement de statut
+    const counterpartId = userId === client_id ? provider_user_id : client_id;
+    if (counterpartId) {
+      await notify({
+        userId: counterpartId,
+        title: 'Mise à jour de l’intervention',
+        message: `Le statut de l’intervention #${requestId} est désormais : ${status}.`,
+        type: 'status_changed',
+        link: `/requests/${requestId}`,
+        metadata: { request_id: Number(requestId), status },
+      });
     }
 
     return res.json({

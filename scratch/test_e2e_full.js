@@ -43,7 +43,7 @@ async function runEndToEndTest() {
 
   // 1. Healthcheck API et IA
   console.log('1️⃣ Vérification des services en cours d’exécution...');
-  const apiHealth = await request('http://localhost:4000/api/health');
+  const apiHealth = await request('http://localhost:4001/api/health');
   console.log(`   - Backend API & DB  : [${apiHealth.data.status}] DB: ${apiHealth.data.database}`);
 
   const aiHealth = await request('http://localhost:8000/health');
@@ -53,7 +53,7 @@ async function runEndToEndTest() {
   const clientEmail = `client_${Date.now()}@assistci.ci`;
   const clientPhone = `+22507${Math.floor(10000000 + Math.random() * 90000000)}`;
   console.log(`2️⃣ Inscription d'un nouveau Client (${clientEmail})...`);
-  const clientReg = await request('http://localhost:4000/api/auth/register', { method: 'POST' }, {
+  const clientReg = await request('http://localhost:4001/api/auth/register', { method: 'POST' }, {
     first_name: 'Awa',
     last_name: 'Touré',
     email: clientEmail,
@@ -68,7 +68,7 @@ async function runEndToEndTest() {
   const provEmail = `depanneur_${Date.now()}@assistci.ci`;
   const provPhone = `+22505${Math.floor(10000000 + Math.random() * 90000000)}`;
   console.log(`\n3️⃣ Inscription d'un Dépanneur professionnel (${provEmail})...`);
-  const provReg = await request('http://localhost:4000/api/auth/register', { method: 'POST' }, {
+  const provReg = await request('http://localhost:4001/api/auth/register', { method: 'POST' }, {
     first_name: 'Ibrahim',
     last_name: 'Bamba',
     email: provEmail,
@@ -80,24 +80,24 @@ async function runEndToEndTest() {
   console.log(`   ✓ Dépanneur créé (ID: ${provReg.data.user.id}, Atelier: ${provReg.data.user.first_name})`);
   const provToken = provReg.data.token;
 
-  // 4. Inscription Admin
-  const adminEmail = `admin_${Date.now()}@assistci.ci`;
-  const adminPhone = `+22501${Math.floor(10000000 + Math.random() * 90000000)}`;
-  console.log(`\n4️⃣ Création d'un Administrateur de supervision (${adminEmail})...`);
-  const adminReg = await request('http://localhost:4000/api/auth/register', { method: 'POST' }, {
-    first_name: 'Superviseur',
-    last_name: 'ASSISTCI',
-    email: adminEmail,
-    phone: adminPhone,
-    password: 'Password123!',
-    role: 'client', // sera promu ci-dessous pour le test
+  // 4. Connexion Admin (compte administrateur par défaut défini dans database/schema.sql)
+  console.log('\n4️⃣ Connexion de l’Administrateur de supervision...');
+  const adminLogin = await request('http://localhost:4001/api/auth/login', { method: 'POST' }, {
+    login: 'admin@assistci.ci',
+    password: 'Admin123!',
   });
-  const adminToken = adminReg.data.token;
+  if (!adminLogin.data || !adminLogin.data.token) {
+    throw new Error(
+      'Connexion admin impossible. Exécutez database/schema.sql pour créer le compte admin@assistci.ci (mot de passe Admin123!).'
+    );
+  }
+  console.log(`   ✓ Administrateur connecté (ID: ${adminLogin.data.user.id}, Rôle: ${adminLogin.data.user.role})`);
+  const adminToken = adminLogin.data.token;
 
   // 5. Téléversement de pièce d'identité KYC par le dépanneur
   console.log(`\n5️⃣ Dépanneur soumet sa Carte Nationale d’Identité (KYC)...`);
   const kycUpload = await request(
-    'http://localhost:4000/api/kyc/upload',
+    'http://localhost:4001/api/kyc/upload',
     { method: 'POST', headers: { Authorization: `Bearer ${provToken}` } },
     {
       document_type: 'cni',
@@ -110,7 +110,7 @@ async function runEndToEndTest() {
   // 6. L'Administrateur examine et valide le document KYC
   console.log(`\n6️⃣ Administrateur examine la pièce d'identité et accorde le statut VÉRIFIÉ...`);
   const kycReview = await request(
-    `http://localhost:4000/api/admin/kyc/${kycDocId}/review`,
+    `http://localhost:4001/api/admin/kyc/${kycDocId}/review`,
     { method: 'POST', headers: { Authorization: `Bearer ${adminToken}` } },
     { status: 'approved' }
   );
@@ -128,7 +128,7 @@ async function runEndToEndTest() {
   // 8. Le Client crée la demande d'assistance automobile
   console.log(`\n8️⃣ Le Client déclenche son appel d'assistance...`);
   const createReq = await request(
-    'http://localhost:4000/api/requests',
+    'http://localhost:4001/api/requests',
     { method: 'POST', headers: { Authorization: `Bearer ${clientToken}` } },
     {
       category_id: 1,
@@ -151,7 +151,7 @@ async function runEndToEndTest() {
   // 9. Le Dépanneur soumet une proposition de devis
   console.log(`\n9️⃣ Le Dépanneur soumet un devis chiffré...`);
   const sendQuote = await request(
-    `http://localhost:4000/api/requests/${newReq.id}/proposals`,
+    `http://localhost:4001/api/requests/${newReq.id}/proposals`,
     { method: 'POST', headers: { Authorization: `Bearer ${provToken}` } },
     {
       proposed_price: 15000,
@@ -165,7 +165,7 @@ async function runEndToEndTest() {
   // 10. Le Client accepte le devis
   console.log(`\n🔟 Le Client confirme et accepte le devis...`);
   const acceptQuote = await request(
-    `http://localhost:4000/api/requests/proposals/${quote.id}/accept`,
+    `http://localhost:4001/api/requests/proposals/${quote.id}/accept`,
     { method: 'POST', headers: { Authorization: `Bearer ${clientToken}` } }
   );
   console.log(`   ✓ Devis accepté ! Message : ${acceptQuote.data.message}`);
@@ -173,14 +173,14 @@ async function runEndToEndTest() {
   // 11. Échange de messages (Chat direct)
   console.log(`\n1️⃣1️⃣ Messagerie instantanée en direct entre Client et Dépanneur...`);
   const msg1 = await request(
-    `http://localhost:4000/api/requests/${newReq.id}/messages`,
+    `http://localhost:4001/api/requests/${newReq.id}/messages`,
     { method: 'POST', headers: { Authorization: `Bearer ${clientToken}` } },
     { content: 'Bonjour Ibrahim, je suis garé juste à côté du carrefour avec les feux de détresse.' }
   );
   console.log(`   [Client -> Dépanneur] : "${msg1.data.content}"`);
 
   const msg2 = await request(
-    `http://localhost:4000/api/requests/${newReq.id}/messages`,
+    `http://localhost:4001/api/requests/${newReq.id}/messages`,
     { method: 'POST', headers: { Authorization: `Bearer ${provToken}` } },
     { content: 'Bien reçu, je vous aperçois, j’arrive dans 3 minutes !' }
   );
@@ -189,7 +189,7 @@ async function runEndToEndTest() {
   // 12. Clôture de l'intervention
   console.log(`\n1️⃣2️⃣ Intervention réalisée : Le dépanneur marque la mission comme terminée...`);
   const finishReq = await request(
-    `http://localhost:4000/api/requests/${newReq.id}/status`,
+    `http://localhost:4001/api/requests/${newReq.id}/status`,
     { method: 'PATCH', headers: { Authorization: `Bearer ${provToken}` } },
     { status: 'completed' }
   );
