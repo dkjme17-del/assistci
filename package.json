@@ -1,0 +1,15 @@
+{
+  "name": "assistci",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @assistci/web",
+    "api": "npm run dev --workspace @assistci/api",
+    "build:web": "npm run build --workspace @assistci/web",
+    "lint:web": "npm run lint --workspace @assistci/web",
+    "ai": "cd services/ai && python app.py"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+.env.local
+npm-debug.log*
+.DS_Store
+__pycache__
+venv
+*.pyc
