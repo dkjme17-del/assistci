@@ -407,3 +407,4 @@ export default function AssistancePage() {
     </Suspense>
   );
 }
+

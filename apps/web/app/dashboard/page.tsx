@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Calendar,
   Loader2,
+  ArrowRight,
 } from 'lucide-react';
 import { fetchApi, getCurrentUser } from '../../lib/api';
 
@@ -193,6 +194,13 @@ export default function DashboardPage() {
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Urgence : <span className="text-slate-800">{req.urgency}</span>
                   </span>
+                  <Link
+                    href={`/requests/${req.id}`}
+                    className="inline-flex items-center gap-1 text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white px-3.5 py-1.5 rounded-lg transition shadow-sm mt-1"
+                  >
+                    <span>Détails & Chat</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
               </div>
             ))}
@@ -202,3 +210,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

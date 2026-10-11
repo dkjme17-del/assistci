@@ -56,3 +56,4 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 
   return data;
 }
+
