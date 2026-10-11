@@ -27,6 +27,23 @@ const BREAKDOWN_TYPES = [
   { id: 'lockout', name: 'Clés oubliées / Bloquées', icon: Key, desc: 'Ouverture de portière sécurisée' },
 ];
 
+const IVORIAN_CITIES = [
+  'Abidjan',
+  'Yamoussoukro',
+  'Bouaké',
+  'San-Pédro',
+  'Korhogo',
+  'Daloa',
+  'Man',
+  'Gagnoa',
+  'Abengourou',
+  'Grand-Bassam',
+  'Dabou',
+  'Soubré',
+  'Divo',
+  'Agboville',
+];
+
 const ABIDJAN_COMMUNES = [
   'Cocody',
   'Yopougon',
@@ -43,6 +60,14 @@ const ABIDJAN_COMMUNES = [
   'Anyama',
 ];
 
+const HIGHWAY_AXES = [
+  'Autoroute du Nord (A3 : Abidjan - Singrobo - Yamoussoukro - Bouaké)',
+  'La Côtière (A10 : Abidjan - Dabou - Grand-Lahou - San-Pédro)',
+  'Route de l’Est (A1 : Abidjan - Adzopé - Abengourou)',
+  'Axe Ouest (A6 : Yamoussoukro - Daloa - Man)',
+  'Axe Sud-Est (Abidjan - Grand-Bassam - Bonoua - Noé)',
+];
+
 function AssistanceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -50,7 +75,11 @@ function AssistanceContent() {
   const [breakdownType, setBreakdownType] = useState('battery');
   const [vehicleType, setVehicleType] = useState('Berline');
   const [vehicleBrand, setVehicleBrand] = useState('');
+  const [locationType, setLocationType] = useState<'city' | 'highway'>('city');
+  const [city, setCity] = useState('Abidjan');
   const [district, setDistrict] = useState('Cocody');
+  const [highwayAxis, setHighwayAxis] = useState(HIGHWAY_AXES[0]);
+  const [highwayMilestone, setHighwayMilestone] = useState('');
   const [addressText, setAddressText] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [description, setDescription] = useState('');
@@ -70,16 +99,31 @@ function AssistanceContent() {
     const promptParam = searchParams.get('prompt');
     if (promptParam) {
       setDescription(promptParam);
-      // Détection rapide dans le prompt
       const lower = promptParam.toLowerCase();
       if (lower.includes('batterie')) setBreakdownType('battery');
       else if (lower.includes('pneu') || lower.includes('roue')) setBreakdownType('flat_tire');
       else if (lower.includes('remorquage') || lower.includes('remorque')) setBreakdownType('towing');
       else if (lower.includes('moteur')) setBreakdownType('engine_failure');
 
-      // Détection commune
+      // Détection autoroute vs ville
+      if (lower.includes('autoroute') || lower.includes('singrobo') || lower.includes('cotiere') || lower.includes('côtière') || lower.includes('péage') || lower.includes('pk ')) {
+        setLocationType('highway');
+        setUrgency('critical');
+      }
+
+      // Détection villes de province
+      for (const c of IVORIAN_CITIES) {
+        if (lower.includes(c.toLowerCase())) {
+          setCity(c);
+          setDistrict(c);
+          break;
+        }
+      }
+
+      // Détection commune Abidjan si pertinent
       for (const com of ABIDJAN_COMMUNES) {
         if (lower.includes(com.toLowerCase())) {
+          setCity('Abidjan');
           setDistrict(com);
           break;
         }
@@ -101,7 +145,7 @@ function AssistanceContent() {
       (err) => {
         console.error('Erreur géolocalisation:', err);
         setLocating(false);
-        alert('Impossible de récupérer la position GPS. Vous pouvez préciser votre commune manuellement.');
+        alert('Impossible de récupérer la position GPS. Vous pouvez préciser votre position manuellement.');
       },
       { timeout: 10000 }
     );
@@ -113,7 +157,6 @@ function AssistanceContent() {
 
     const user = getCurrentUser();
     if (!user) {
-      // Rediriger vers login avec rappel
       router.push('/login?redirect=/assistance');
       return;
     }
@@ -122,7 +165,9 @@ function AssistanceContent() {
 
     try {
       const selectedTypeObj = BREAKDOWN_TYPES.find((b) => b.id === breakdownType);
-      const title = `Assistance ${selectedTypeObj?.name || 'Panne'} à ${district}`;
+      const title = locationType === 'highway'
+        ? `SOS ${selectedTypeObj?.name || 'Panne'} sur ${highwayAxis.split('(')[0].trim()}`
+        : `Assistance ${selectedTypeObj?.name || 'Panne'} à ${city === 'Abidjan' ? district : city}`;
 
       const res = await fetchApi('/requests', {
         method: 'POST',
@@ -133,12 +178,15 @@ function AssistanceContent() {
           breakdown_type: breakdownType,
           vehicle_type: vehicleType,
           vehicle_brand: vehicleBrand,
-          city: 'Abidjan',
-          district,
-          address_text: addressText,
+          location_type: locationType,
+          highway_axis: locationType === 'highway' ? highwayAxis : null,
+          highway_milestone: locationType === 'highway' ? (highwayMilestone || addressText) : null,
+          city,
+          district: locationType === 'city' ? district : highwayAxis.split('(')[0].trim(),
+          address_text: addressText || highwayMilestone,
           latitude: coords?.lat || null,
           longitude: coords?.lng || null,
-          urgency,
+          urgency: locationType === 'highway' && urgency === 'normal' ? 'high' : urgency,
         }),
       });
 
@@ -283,7 +331,7 @@ function AssistanceContent() {
           </div>
         </div>
 
-        {/* 3. Localisation */}
+        {/* 3. Localisation Nationale & Autoroutes */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <label className="text-sm font-bold text-slate-900">
@@ -300,31 +348,134 @@ function AssistanceContent() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <span className="block text-xs text-slate-500 mb-1 font-medium">Commune d'Abidjan</span>
-              <select
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              >
-                {ABIDJAN_COMMUNES.map((com) => (
-                  <option key={com} value={com}>{com}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <span className="block text-xs text-slate-500 mb-1 font-medium">Repère ou rue précise</span>
-              <input
-                type="text"
-                value={addressText}
-                onChange={(e) => setAddressText(e.target.value)}
-                placeholder="Ex: Carrefour la Vie, face station Total"
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
+          {/* Toggle Type d'environnement */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setLocationType('city')}
+              className={`py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 ${
+                locationType === 'city'
+                  ? 'bg-white text-orange-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <MapPin className="w-4 h-4" />
+              <span>En Ville / Commune</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLocationType('highway');
+                setUrgency('critical');
+              }}
+              className={`py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-center gap-2 ${
+                locationType === 'highway'
+                  ? 'bg-red-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              <span>Sur Autoroute / Axe Routier</span>
+            </button>
           </div>
+
+          {/* Alerte Sécurité spécifique Autoroute */}
+          {locationType === 'highway' && (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>Consignes de sécurité d'urgence sur autoroute :</span>
+              </div>
+              <p>
+                Allumez immédiatement vos feux de détresse, placez le triangle à 100m en amont et <strong>abritez-vous impérativement derrière la glissière de sécurité</strong> avec vos passagers.
+              </p>
+            </div>
+          )}
+
+          {locationType === 'highway' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <span className="block text-xs text-slate-500 mb-1 font-medium">Axe autoroutier ou national</span>
+                <select
+                  value={highwayAxis}
+                  onChange={(e) => setHighwayAxis(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                >
+                  {HIGHWAY_AXES.map((axis) => (
+                    <option key={axis} value={axis}>{axis}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <span className="block text-xs text-slate-500 mb-1 font-medium">Point kilométrique (PK) ou repère péage</span>
+                <input
+                  type="text"
+                  required={locationType === 'highway'}
+                  value={highwayMilestone}
+                  onChange={(e) => setHighwayMilestone(e.target.value)}
+                  placeholder="Ex: PK 145 vers Toumodi, 5km après péage Singrobo"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <span className="block text-xs text-slate-500 mb-1 font-medium">Ville de Côte d'Ivoire</span>
+                <select
+                  value={city}
+                  onChange={(e) => {
+                    const c = e.target.value;
+                    setCity(c);
+                    if (c !== 'Abidjan') setDistrict(c);
+                  }}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                >
+                  {IVORIAN_CITIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {city === 'Abidjan' ? (
+                <div>
+                  <span className="block text-xs text-slate-500 mb-1 font-medium">Commune d'Abidjan</span>
+                  <select
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  >
+                    {ABIDJAN_COMMUNES.map((com) => (
+                      <option key={com} value={com}>{com}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <span className="block text-xs text-slate-500 mb-1 font-medium">Quartier ou Secteur</span>
+                  <input
+                    type="text"
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    placeholder="Ex: Dioulakro, Koko, Séwéké..."
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                  />
+                </div>
+              )}
+
+              <div>
+                <span className="block text-xs text-slate-500 mb-1 font-medium">Repère précis ou rue</span>
+                <input
+                  type="text"
+                  value={addressText}
+                  onChange={(e) => setAddressText(e.target.value)}
+                  placeholder="Ex: Face station Total, carrefour..."
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 4. Description détaillée & Urgence */}

@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS service_areas (
   provider_id INT NOT NULL REFERENCES service_providers(id) ON DELETE CASCADE,
   city VARCHAR(100) NOT NULL DEFAULT 'Abidjan',
   district VARCHAR(100), -- Cocody, Yopougon, Marcory, Plateau, etc.
+  covered_highways TEXT[], -- ARRAY['Autoroute du Nord', 'La Côtière']
   latitude NUMERIC(9,6),
   longitude NUMERIC(9,6),
   radius_km NUMERIC(5,2) DEFAULT 10.0,
@@ -118,6 +119,9 @@ CREATE TABLE IF NOT EXISTS service_requests (
   vehicle_type VARCHAR(50), -- citadine, suv, camion, moto
   vehicle_brand VARCHAR(100), -- Toyota, Hyundai, Peugeot, etc.
   address_text VARCHAR(255),
+  location_type VARCHAR(30) DEFAULT 'city' CHECK (location_type IN ('city', 'highway', 'rural')),
+  highway_axis VARCHAR(100), -- Autoroute du Nord (A3), La Côtière (A10), etc.
+  highway_milestone VARCHAR(100), -- PK 145, Près du péage de Singrobo, etc.
   city VARCHAR(100) NOT NULL DEFAULT 'Abidjan',
   district VARCHAR(100),
   latitude NUMERIC(9,6),

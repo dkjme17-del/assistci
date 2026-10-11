@@ -9,7 +9,7 @@ app = FastAPI(
     version='1.0.0'
 )
 
-# Liste des communes et quartiers clés d'Abidjan
+# Liste des communes d'Abidjan
 ABIDJAN_LOCATIONS = {
     'cocody': ['cocody', 'angre', 'angré', 'riviera', 'deux plateaux', '2 plateaux', 'palmeraie', 'danga', 'ambassades'],
     'yopougon': ['yopougon', 'yop', 'niangon', 'siporex', 'bel air', 'toit rouge', 'maroc', 'selmer'],
@@ -21,6 +21,30 @@ ABIDJAN_LOCATIONS = {
     'adjame': ['adjame', 'adjamé', 'williamsville', 'mirador', 'liberte'],
     'abobo': ['abobo', 'gare', 'samake', 'avocatier', 'pk18', 'derriere rail'],
     'bingerville': ['bingerville', 'feh kesse', 'akouai santai'],
+}
+
+# Grandes villes de l'intérieur de la Côte d'Ivoire
+IVORIAN_CITIES = {
+    'yamoussoukro': ['yamoussoukro', 'yakro', 'morofe', 'morofé', 'dioulakro', 'fondation', 'ngokro'],
+    'bouake': ['bouake', 'bouaké', 'koko', 'air france', 'nimbo', 'dar-es-salam', 'kennedy'],
+    'san-pedro': ['san-pedro', 'san pedro', 'bardot', 'seweke', 'séwéké', 'zone portuaire', 'cite', 'cité'],
+    'korhogo': ['korhogo', 'soba', 'koko', 'petit paris', 'sinistre', 'sinistré'],
+    'daloa': ['daloa', 'labia', 'tazibouo', 'gbeuliville'],
+    'man': ['man', 'tonkpi', 'grand gbapleu', 'sari', 'doyagouine'],
+    'gagnoa': ['gagnoa', 'babre', 'babré', 'dioulabougou', 'garahio'],
+    'abengourou': ['abengourou', 'agnikro', 'cafop'],
+    'grand-bassam': ['grand-bassam', 'bassam', 'moossou', 'imperial', 'quartier france'],
+    'dabou': ['dabou', 'agban', 'debrimou'],
+    'soubre': ['soubre', 'soubré', 'barrage'],
+    'divo': ['divo', 'bada', 'konankro'],
+}
+
+# Grands axes et corridors autoroutiers majeurs de Côte d'Ivoire
+HIGHWAY_CORRIDORS = {
+    'Autoroute du Nord (A3)': ['autoroute du nord', 'autoroute', 'singrobo', 'attinguie', 'attinguié', 'nzianouan', 'n zianouan', 'toumodi', 'tiebissou', 'tiébissou', 'peage', 'péage', 'pk '],
+    'La Côtière (A10)': ['cotiere', 'côtière', 'grand-lahou', 'grand lahou', 'fresco', 'sassandra'],
+    'Route de l Est (A1)': ['route de l est', 'route de lest', 'adzope', 'adzopé', 'akoupe', 'akoupé', 'agnibilekrou', 'agnibilékrou'],
+    'Axe Ouest (A6)': ['bouafle', 'bouaflé', 'duekoue', 'duékoué', 'blolequin'],
 }
 
 # Lexique des pannes automobiles
@@ -68,6 +92,7 @@ def health():
         'status': 'ok',
         'service': 'assistci-ai',
         'version': '1.0.0',
+        'coverage': 'Toute la Côte d Ivoire (Villes & Autoroutes)',
         'message': 'Microservice IA et moteur de matching opérationnels'
     }
 
@@ -75,11 +100,13 @@ def health():
 @app.post('/analyze-request')
 def analyze_request(payload: RequestAnalysisInput):
     """
-    Analyse en langage naturel de la demande de dépannage :
+    Analyse en langage naturel de la demande de dépannage à l'échelle nationale :
     - Détection de la catégorie et du type de panne
-    - Extraction de la commune / quartier d'Abidjan
+    - Identification du type d'environnement (Agglomération vs Autoroute / Axe National)
+    - Détection de la ville ou commune de Côte d'Ivoire
+    - Détection de l'axe autoroutier et point de repère (PK / péage)
     - Détection de la marque du véhicule
-    - Évaluation du degré d'urgence
+    - Évaluation de l'urgence de sécurité routière
     """
     text = payload.message.lower()
 
@@ -92,40 +119,68 @@ def analyze_request(payload: RequestAnalysisInput):
             max_matches = matches
             detected_breakdown = b_type
 
-    # 2. Détection du lieu (commune d'Abidjan)
-    detected_district = payload.location or 'Abidjan'
-    for district, aliases in ABIDJAN_LOCATIONS.items():
-        if any(alias in text for alias in aliases):
-            detected_district = district.capitalize()
+    # 2. Détection Axe Autoroutier / Corridor
+    location_type = 'city'
+    detected_highway = None
+    for h_name, keywords in HIGHWAY_CORRIDORS.items():
+        if any(kw in text for kw in keywords):
+            location_type = 'highway'
+            detected_highway = h_name
             break
 
-    # 3. Détection de la marque
+    # 3. Détection de la Ville ou Commune
+    detected_city = 'Abidjan'
+    detected_district = payload.location or None
+
+    # Recherche dans les villes de l'intérieur
+    for city_key, aliases in IVORIAN_CITIES.items():
+        if any(alias in text for alias in aliases):
+            detected_city = city_key.capitalize()
+            detected_district = detected_city
+            break
+
+    # Recherche dans les communes d'Abidjan si pas encore attribué
+    if detected_city == 'Abidjan':
+        for district, aliases in ABIDJAN_LOCATIONS.items():
+            if any(alias in text for alias in aliases):
+                detected_district = district.capitalize()
+                break
+
+    if not detected_district:
+        detected_district = detected_city
+
+    # 4. Détection de la marque
     detected_brand = None
     for brand in CAR_BRANDS:
         if brand in text:
             detected_brand = brand.capitalize()
             break
 
-    # 4. Évaluation de l'urgence
-    urgency = 'normal'
-    if any(w in text for w in ['urgent', 'immédiat', 'immediat', 'bloque la circulation', 'danger', 'au milieu de la voie']):
+    # 5. Évaluation de l'urgence routière
+    # Sur autoroute ou voie rapide, une panne est automatiquement classée au minimum HIGH (danger vital)
+    urgency = 'high' if location_type == 'highway' else 'normal'
+
+    if any(w in text for w in ['urgent', 'immédiat', 'immediat', 'danger', 'bloque la circulation', 'voie rapide', 'nuit', 'seul']):
         urgency = 'critical'
     elif any(w in text for w in ['immobilisé', 'immobilise', 'depuis des heures', 'vite', 'panne']):
         urgency = 'high'
 
-    # Résumé explicatif
-    summary = (
-        f"Panne détectée : {detected_breakdown} à {detected_district}. "
-        f"Niveau d'urgence : {urgency}."
-    )
+    # Résumé
+    if location_type == 'highway':
+        summary = f"Panne sur axe rapide ({detected_highway or 'Autoroute'}) vers {detected_city}. Danger de sécurité routière élevé."
+    else:
+        summary = f"Panne identifiée : {detected_breakdown} à {detected_district} ({detected_city}). Niveau d'urgence : {urgency}."
 
     return {
         'service_category': 'auto',
         'breakdown_type': detected_breakdown,
+        'location_type': location_type,
+        'highway_axis': detected_highway,
+        'detected_city': detected_city,
         'detected_district': detected_district,
         'detected_brand': detected_brand,
         'urgency': urgency,
-        'confidence': 0.92 if max_matches > 0 else 0.65,
+        'confidence': 0.94 if max_matches > 0 else 0.70,
         'summary': summary
     }
 

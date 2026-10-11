@@ -11,6 +11,9 @@ async function createRequest(req, res) {
       vehicle_type,
       vehicle_brand,
       address_text,
+      location_type = 'city',
+      highway_axis,
+      highway_milestone,
       city = 'Abidjan',
       district,
       latitude,
@@ -29,9 +32,10 @@ async function createRequest(req, res) {
       `INSERT INTO service_requests (
         client_id, category_id, title, description,
         breakdown_type, vehicle_type, vehicle_brand,
-        address_text, city, district, latitude, longitude, urgency, status
+        address_text, location_type, highway_axis, highway_milestone,
+        city, district, latitude, longitude, urgency, status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'created')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'created')
       RETURNING *`,
       [
         clientId,
@@ -42,6 +46,9 @@ async function createRequest(req, res) {
         vehicle_type || null,
         vehicle_brand || null,
         address_text || null,
+        location_type,
+        highway_axis || null,
+        highway_milestone || null,
         city,
         district || null,
         latitude || null,
