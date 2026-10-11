@@ -112,11 +112,13 @@ async function updateRequestStatus(req, res) {
       return res.status(400).json({ error: `Statut invalide. Autorisés : ${validStatuses.join(', ')}` });
     }
 
+    const completedClause = status === 'completed' ? 'NOW()' : 'completed_at';
+
     const updateRes = await db.query(
       `UPDATE service_requests
        SET status = $1,
            cancellation_reason = $2,
-           completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END,
+           completed_at = ${completedClause},
            updated_at = NOW()
        WHERE id = $3
        RETURNING *`,
@@ -142,3 +144,4 @@ module.exports = {
   acceptProposal,
   updateRequestStatus,
 };
+
