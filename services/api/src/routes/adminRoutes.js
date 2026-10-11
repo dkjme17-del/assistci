@@ -8,3 +8,4 @@ router.get('/kyc/pending', authenticateToken, adminController.getPendingKyc);
 router.post('/kyc/:id/review', authenticateToken, adminController.reviewKycDocument);
 
 module.exports = router;
+

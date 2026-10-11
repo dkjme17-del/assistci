@@ -7,3 +7,4 @@ router.post('/upload', authenticateToken, kycController.uploadKycDocument);
 router.get('/my-documents', authenticateToken, kycController.getMyKycDocuments);
 
 module.exports = router;
+

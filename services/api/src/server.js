@@ -10,7 +10,7 @@ const kycRoutes = require('./routes/kycRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4001;
 
 // Middlewares globaux
 app.use(cors());
