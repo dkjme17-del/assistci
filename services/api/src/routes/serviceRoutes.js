@@ -6,3 +6,4 @@ router.get('/categories', serviceController.getCategories);
 router.get('/providers', serviceController.getProviders);
 
 module.exports = router;
+

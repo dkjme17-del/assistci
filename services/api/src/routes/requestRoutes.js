@@ -8,3 +8,4 @@ router.get('/', authenticateToken, requestController.getMyRequests);
 router.get('/:id', authenticateToken, requestController.getRequestById);
 
 module.exports = router;
+

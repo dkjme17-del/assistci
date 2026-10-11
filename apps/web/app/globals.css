@@ -1,24 +1,20 @@
-html,
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 15, 23, 42;
+  --background-start-rgb: 248, 250, 252;
+  --background-end-rgb: 255, 255, 255;
+}
+
 body {
-  margin: 0;
-  padding: 0;
-  background: #f5f7fb;
-  color: #111827;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-main {
-  max-width: 1100px;
-  margin: 0 auto;
-}
-
-h1 {
-  color: #0f172a;
-}
-
-ul {
-  line-height: 1.8;
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  min-height: 100vh;
 }
