@@ -57,3 +57,14 @@ téléversements côté API.
 Si vous changez une variable `NEXT_PUBLIC_*`, redéployez le frontend pour
 l'intégrer au build. Les déploiements de prévisualisation ont une autre origine :
 ajoutez-la à `CORS_ORIGINS` sur Render si vous souhaitez les tester.
+
+## Suivi GPS d'une intervention
+
+Après l'acceptation d'un devis, le client et le prestataire assigné peuvent
+choisir séparément de partager leur position depuis la page de l'intervention.
+Le navigateur demande l'autorisation GPS et le partage peut être arrêté à tout
+moment. Seule la dernière position est conservée ; elle est supprimée à l'arrêt
+du partage, après 90 secondes sans mise à jour ou à la fin de l'intervention.
+La page doit rester ouverte pour continuer à envoyer la position. La carte montre
+les positions et leur déplacement pendant la session ; la ligne entre les deux
+participants est indicative et ne fournit pas de navigation routière.

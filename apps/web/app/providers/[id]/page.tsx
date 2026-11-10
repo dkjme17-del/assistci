@@ -82,7 +82,7 @@ export default function ProviderProfilePage() {
     e.preventDefault();
     const params2 = new URLSearchParams({ provider_id: String(providerId) });
     if (description.trim()) params2.set('description', description.trim());
-    router.push(`/assistance?${params2.toString()}`);
+    router.push(`/requests/new?${params2.toString()}`);
   };
 
   return (
@@ -125,10 +125,17 @@ export default function ProviderProfilePage() {
                   <Download className="w-4 h-4" />
                 </button>
               )}
-              <a href={`tel:${provider.phone}`} className="btn-outline">
-                <Phone className="w-4 h-4 mr-2" />
-                Contacter
-              </a>
+              {provider.phone ? (
+                <a href={`tel:${String(provider.phone).replace(/[^\d+]/g, '')}`} className="btn-outline">
+                  <Phone className="w-4 h-4 mr-2" />
+                  Contacter
+                </a>
+              ) : (
+                <button type="button" className="btn-outline opacity-60" disabled title="Numéro non renseigné">
+                  <Phone className="w-4 h-4 mr-2" />
+                  Contacter
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -234,7 +241,7 @@ export default function ProviderProfilePage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              placeholder="Décrivez la panne : voiture ne démarre plus à Cocody, etc."
+              placeholder="Décrivez le service souhaité et votre localisation."
               className="field resize-y"
             />
             <button type="submit" className="btn-primary w-full mt-1">

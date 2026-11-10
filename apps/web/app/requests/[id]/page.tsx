@@ -22,6 +22,7 @@ import {
 import dynamic from 'next/dynamic';
 import { fetchApi, getCurrentUser } from '../../../lib/api';
 import { download, downloadMissionReceipt, fileUrl, uploadImage } from '../../../lib/media';
+import LiveLocationTracker from '../../../components/LiveLocationTracker';
 
 const InteractiveMap = dynamic(() => import('../../../components/InteractiveMap'), {
   ssr: false,
@@ -326,6 +327,15 @@ export default function RequestDetailPage() {
         )}
       </div>
 
+      {request.assigned_provider_id &&
+        (isClient || isProvider) &&
+        ['accepted', 'in_progress'].includes(request.status) && (
+          <LiveLocationTracker
+            requestId={String(request.id)}
+            participant={isClient ? 'client' : 'provider'}
+          />
+        )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Section 1 : Devis et Propositions */}
         <div className="space-y-6">
@@ -504,4 +514,3 @@ export default function RequestDetailPage() {
     </div>
   );
 }
-

@@ -186,6 +186,10 @@ async function updateRequestStatus(req, res) {
       return res.status(404).json({ error: 'Demande introuvable' });
     }
 
+    if (status === 'completed' || status === 'cancelled') {
+      await db.query('DELETE FROM request_live_locations WHERE request_id = $1', [requestId]);
+    }
+
     // Notifier l'autre partie du changement de statut
     const counterpartId = userId === client_id ? provider_user_id : client_id;
     if (counterpartId) {
@@ -214,4 +218,3 @@ module.exports = {
   acceptProposal,
   updateRequestStatus,
 };
-

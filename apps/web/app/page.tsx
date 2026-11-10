@@ -23,6 +23,10 @@ export default function HomePage() {
     fetchApi('/services/categories')
       .then((data) => setCategories(data || []))
       .catch(() => setCategories([]));
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('service')) setService(params.get('service') || '');
+    if (params.has('location')) setLocation(params.get('location') || '');
   }, []);
 
   const handleSearch = (e: React.FormEvent) => {

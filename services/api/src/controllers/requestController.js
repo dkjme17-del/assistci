@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const aiService = require('../services/aiService');
+const { getRequestAccess } = require('../services/requestAccess');
 
 async function createRequest(req, res) {
   try {
@@ -21,6 +22,7 @@ async function createRequest(req, res) {
       longitude,
       urgency,
       media,
+      provider_id,
     } = req.body;
 
     if (!category_id || !title || !description) {
@@ -54,14 +56,40 @@ async function createRequest(req, res) {
 
     city = city || 'Abidjan';
 
+    let assignedProviderId = null;
+    if (provider_id !== undefined && provider_id !== null && provider_id !== '') {
+      const parsedProviderId = Number(provider_id);
+      if (!Number.isInteger(parsedProviderId) || parsedProviderId <= 0) {
+        return res.status(400).json({
+          error: 'Prestataire invalide',
+          message: 'Le prestataire sélectionné est invalide.',
+        });
+      }
+
+      const providerResult = await db.query(
+        `SELECT sp.id
+         FROM service_providers sp
+         JOIN users u ON u.id = sp.user_id
+         WHERE sp.id = $1 AND u.is_active = true`,
+        [parsedProviderId]
+      );
+      if (providerResult.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Prestataire introuvable',
+          message: 'Le prestataire sélectionné n’est plus disponible.',
+        });
+      }
+      assignedProviderId = parsedProviderId;
+    }
+
     const result = await db.query(
       `INSERT INTO service_requests (
         client_id, category_id, title, description,
         breakdown_type, vehicle_type, vehicle_brand,
         address_text, location_type, highway_axis, highway_milestone,
-        city, district, latitude, longitude, urgency, status
+        city, district, latitude, longitude, urgency, status, assigned_provider_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'created')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'created', $17)
       RETURNING *`,
       [
         clientId,
@@ -80,6 +108,7 @@ async function createRequest(req, res) {
         latitude || null,
         longitude || null,
         urgency || 'normal',
+        assignedProviderId,
       ]
     );
 
@@ -182,6 +211,14 @@ async function getRequestById(req, res) {
   try {
     const { id } = req.params;
 
+    const access = await getRequestAccess(req.user, id);
+    if (!access.request) {
+      return res.status(404).json({ error: 'Demande introuvable' });
+    }
+    if (!access.allowed) {
+      return res.status(403).json({ error: 'Accès refusé à cette demande' });
+    }
+
     const requestRes = await db.query(
       `SELECT sr.*, sc.name AS category_name, u.first_name AS client_first_name, u.last_name AS client_last_name, u.phone AS client_phone
        FROM service_requests sr
@@ -197,16 +234,33 @@ async function getRequestById(req, res) {
 
     const serviceRequest = requestRes.rows[0];
 
-    // Récupérer les propositions de devis associées
-    const proposalsRes = await db.query(
-      `SELECT rp.*, sp.business_name, sp.rating, u.first_name, u.phone
-       FROM request_proposals rp
-       JOIN service_providers sp ON rp.provider_id = sp.id
-       JOIN users u ON sp.user_id = u.id
-       WHERE rp.request_id = $1
-       ORDER BY rp.created_at DESC`,
-      [id]
-    );
+    // Récupérer les propositions de devis associées.
+    // Confidentialité : un prestataire non assigné ne voit pas les devis concurrents,
+    // un prestataire assigné ne voit que le sien.
+    let proposals = [];
+    if (access.isAdmin || access.isClientOwner) {
+      const proposalsRes = await db.query(
+        `SELECT rp.*, sp.business_name, sp.rating, u.first_name, u.phone
+         FROM request_proposals rp
+         JOIN service_providers sp ON rp.provider_id = sp.id
+         JOIN users u ON sp.user_id = u.id
+         WHERE rp.request_id = $1
+         ORDER BY rp.created_at DESC`,
+        [id]
+      );
+      proposals = proposalsRes.rows;
+    } else if (access.isAssignedProvider && access.providerId) {
+      const proposalsRes = await db.query(
+        `SELECT rp.*, sp.business_name, sp.rating, u.first_name, u.phone
+         FROM request_proposals rp
+         JOIN service_providers sp ON rp.provider_id = sp.id
+         JOIN users u ON sp.user_id = u.id
+         WHERE rp.request_id = $1 AND rp.provider_id = $2
+         ORDER BY rp.created_at DESC`,
+        [id, access.providerId]
+      );
+      proposals = proposalsRes.rows;
+    }
 
     // Récupérer les médias (photos)
     const mediaRes = await db.query(
@@ -216,7 +270,7 @@ async function getRequestById(req, res) {
 
     return res.json({
       request: serviceRequest,
-      proposals: proposalsRes.rows,
+      proposals,
       media: mediaRes.rows,
     });
   } catch (error) {
@@ -297,4 +351,3 @@ module.exports = {
   addRequestMedia,
   deleteRequestMedia,
 };
-

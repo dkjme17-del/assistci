@@ -8,8 +8,15 @@ export interface MarkerData {
   lng: number;
   title: string;
   description?: string;
-  type?: 'incident' | 'provider';
+  type?: 'incident' | 'provider' | 'client';
   linkUrl?: string;
+}
+
+export interface MapPathData {
+  positions: [number, number][];
+  color?: string;
+  weight?: number;
+  dashArray?: string;
 }
 
 interface InteractiveMapProps {
@@ -17,6 +24,8 @@ interface InteractiveMapProps {
   centerLng?: number;
   zoom?: number;
   markers?: MarkerData[];
+  paths?: MapPathData[];
+  fitMarkers?: boolean;
   onLocationSelect?: (lat: number, lng: number) => void;
   height?: string;
 }
@@ -26,12 +35,16 @@ export default function InteractiveMap({
   centerLng = -4.0305,
   zoom = 13,
   markers = [],
+  paths = [],
+  fitMarkers = true,
   onLocationSelect,
   height = '360px',
 }: InteractiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerLayerRef = useRef<any>(null);
+  const pathLayerRef = useRef<any>(null);
+  const hasFitMarkersRef = useRef(false);
   const locationSelectRef = useRef(onLocationSelect);
   const [mapReady, setMapReady] = useState(false);
 
@@ -66,11 +79,13 @@ export default function InteractiveMap({
     return () => {
       disposed = true;
       setMapReady(false);
+      hasFitMarkersRef.current = false;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
       markerLayerRef.current = null;
+      pathLayerRef.current = null;
     };
   }, [centerLat, centerLng, zoom]);
 
@@ -97,11 +112,34 @@ export default function InteractiveMap({
         iconSize: [34, 34],
         iconAnchor: [17, 17],
       });
+      const clientIcon = L.divIcon({
+        className: 'assistci-map-icon assistci-map-icon-client',
+        html: '<span>C</span>',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+
+      if (pathLayerRef.current) pathLayerRef.current.remove();
+      const pathLayer = L.featureGroup();
+      paths.forEach((path) => {
+        if (path.positions.length < 2) return;
+        L.polyline(path.positions, {
+          color: path.color || '#155e63',
+          weight: path.weight || 4,
+          opacity: 0.8,
+          dashArray: path.dashArray,
+        }).addTo(pathLayer);
+      });
+      pathLayerRef.current = pathLayer.addTo(map);
 
       markers.forEach((markerData) => {
         if (!Number.isFinite(markerData.lat) || !Number.isFinite(markerData.lng)) return;
         const marker = L.marker([markerData.lat, markerData.lng], {
-          icon: markerData.type === 'incident' ? incidentIcon : providerIcon,
+          icon: markerData.type === 'incident'
+            ? incidentIcon
+            : markerData.type === 'client'
+              ? clientIcon
+              : providerIcon,
         });
         const popup = document.createElement('div');
         popup.className = 'assistci-map-popup';
@@ -124,9 +162,12 @@ export default function InteractiveMap({
       });
 
       markerLayerRef.current = layer.addTo(map);
-      const bounds = layer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
+      if (fitMarkers && !hasFitMarkersRef.current) {
+        const bounds = L.featureGroup([layer, pathLayer]).getBounds();
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
+          hasFitMarkersRef.current = true;
+        }
       }
     }
 
@@ -134,7 +175,7 @@ export default function InteractiveMap({
     return () => {
       cancelled = true;
     };
-  }, [mapReady, markers]);
+  }, [mapReady, markers, paths, fitMarkers]);
 
   return (
     <div className="relative rounded-2xl overflow-hidden border border-line shadow-sm z-0">
@@ -142,4 +183,3 @@ export default function InteractiveMap({
     </div>
   );
 }
-

@@ -19,13 +19,23 @@ async function getCategories(req, res) {
 
 async function getProviders(req, res) {
   try {
-    const { district, emergency_only } = req.query;
+    const district = typeof req.query.district === 'string' ? req.query.district.trim() : '';
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const { emergency_only, available_only } = req.query;
+    const params = [];
+    let areaCondition = '';
+
+    if (district) {
+      params.push(`%${district}%`);
+      areaCondition = ` AND sa.district ILIKE $${params.length}`;
+    }
 
     let queryText = `
       SELECT 
         sp.id,
         sp.business_name,
         sp.bio,
+        sp.specialties,
         sp.rating,
         sp.total_reviews,
         sp.availability,
@@ -42,20 +52,41 @@ async function getProviders(req, res) {
         sa.longitude
       FROM service_providers sp
       JOIN users u ON sp.user_id = u.id
-      LEFT JOIN service_areas sa ON sa.provider_id = sp.id
-      WHERE u.is_active = true AND sp.availability = true
+      LEFT JOIN LATERAL (
+        SELECT sa.district, sa.city, sa.latitude, sa.longitude
+        FROM service_areas sa
+        WHERE sa.provider_id = sp.id${areaCondition}
+        ORDER BY
+          CASE WHEN sa.latitude IS NOT NULL AND sa.longitude IS NOT NULL THEN 0 ELSE 1 END,
+          sa.id ASC
+        LIMIT 1
+      ) sa ON true
+      WHERE u.is_active = true
     `;
-
-    const params = [];
 
     if (emergency_only === 'true') {
       params.push(true);
       queryText += ` AND sp.emergency_ready = $${params.length}`;
     }
 
+    if (available_only === 'true') {
+      params.push(true);
+      queryText += ` AND sp.availability = $${params.length}`;
+    }
+
     if (district) {
-      params.push(`%${district}%`);
-      queryText += ` AND sa.district ILIKE $${params.length}`;
+      queryText += ' AND sa.district IS NOT NULL';
+    }
+
+    if (query) {
+      params.push(`%${query}%`);
+      queryText += ` AND (
+        COALESCE(sp.business_name, '') || ' ' ||
+        COALESCE(sp.bio, '') || ' ' ||
+        COALESCE(array_to_string(sp.specialties, ' '), '') || ' ' ||
+        COALESCE(u.first_name, '') || ' ' ||
+        COALESCE(u.last_name, '')
+      ) ILIKE $${params.length}`;
     }
 
     queryText += ' ORDER BY sp.rating DESC, sp.completed_missions DESC LIMIT 50';
@@ -134,4 +165,3 @@ module.exports = {
   getProviders,
   getProviderById,
 };
-
