@@ -31,6 +31,7 @@ async function getProviders(req, res) {
         sp.availability,
         sp.emergency_ready,
         sp.hourly_rate,
+        sp.logo_url,
         u.first_name,
         u.last_name,
         u.phone,
@@ -67,8 +68,70 @@ async function getProviders(req, res) {
   }
 }
 
+async function getProviderById(req, res) {
+  try {
+    const { id } = req.params;
+    if (!Number.isInteger(Number(id))) {
+      return res.status(400).json({ error: 'Identifiant prestataire invalide' });
+    }
+
+    const result = await db.query(
+      `SELECT
+        sp.id,
+        sp.user_id,
+        sp.business_name,
+        sp.bio,
+        sp.specialties,
+        sp.rating,
+        sp.total_reviews,
+        sp.completed_missions,
+        sp.availability,
+        sp.emergency_ready,
+        sp.hourly_rate,
+        sp.logo_url,
+        sp.created_at,
+        u.first_name,
+        u.last_name,
+        u.phone,
+        u.phone_verified,
+        u.verification_status,
+        sa.district,
+        sa.city,
+        sa.latitude,
+        sa.longitude,
+        sa.radius_km,
+        COALESCE(
+          (SELECT COUNT(*) FROM kyc_documents k WHERE k.user_id = u.id AND k.status = 'approved'),
+          0
+        ) AS verified_documents
+      FROM service_providers sp
+      JOIN users u ON sp.user_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT * FROM service_areas sa WHERE sa.provider_id = sp.id ORDER BY sa.id ASC LIMIT 1
+      ) sa ON true
+      WHERE sp.id = $1 AND u.is_active = true`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Prestataire introuvable' });
+    }
+
+    const photosRes = await db.query(
+      'SELECT id, photo_url, caption, created_at FROM provider_photos WHERE provider_id = $1 ORDER BY created_at DESC',
+      [id]
+    );
+
+    return res.json({ ...result.rows[0], photos: photosRes.rows });
+  } catch (error) {
+    console.error('Erreur getProviderById:', error);
+    return res.status(500).json({ error: 'Erreur lors de la récupération du prestataire' });
+  }
+}
+
 module.exports = {
   getCategories,
   getProviders,
+  getProviderById,
 };
 

@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  eslint: {
+    dirs: ['app', 'components', 'lib'],
+  },
 };
 
 export default nextConfig;

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 import re
+import unicodedata
 
 app = FastAPI(
     title='ASSISTCI AI & Recommendation Service',
@@ -20,16 +21,17 @@ ABIDJAN_LOCATIONS = {
     'treichville': ['treichville', 'armanville', 'avenue 16', 'rue 12', 'solibra'],
     'port-bouet': ['port-bouet', 'port bouet', 'aeroport', 'aéropor', 'gonzagueville', 'vrégence'],
     'adjame': ['adjame', 'adjamé', 'williamsville', 'mirador', 'liberte'],
-    'abobo': ['abobo', 'gare', 'samake', 'avocatier', 'pk18', 'derriere rail'],
+    'abobo': ['abobo', 'samake', 'avocatier', 'pk18', 'derriere rail'],
     'bingerville': ['bingerville', 'feh kesse', 'akouai santai'],
 }
 
 # Grandes villes de l'intérieur de la Côte d'Ivoire
 IVORIAN_CITIES = {
     'yamoussoukro': ['yamoussoukro', 'yakro', 'morofe', 'morofé', 'dioulakro', 'fondation', 'ngokro'],
-    'bouake': ['bouake', 'bouaké', 'koko', 'air france', 'nimbo', 'dar-es-salam', 'kennedy'],
-    'san-pedro': ['san-pedro', 'san pedro', 'bardot', 'seweke', 'séwéké', 'zone portuaire', 'cite', 'cité'],
-    'korhogo': ['korhogo', 'soba', 'koko', 'petit paris', 'sinistre', 'sinistré'],
+    'toumodi': ['toumodi'],
+    'bouake': ['bouake', 'bouaké', 'air france', 'nimbo', 'dar-es-salam', 'kennedy'],
+    'san-pedro': ['san-pedro', 'san pedro', 'bardot', 'seweke', 'séwéké', 'zone portuaire'],
+    'korhogo': ['korhogo', 'soba', 'petit paris', 'sinistre', 'sinistré'],
     'daloa': ['daloa', 'labia', 'tazibouo', 'gbeuliville'],
     'man': ['man', 'tonkpi', 'grand gbapleu', 'sari', 'doyagouine'],
     'gagnoa': ['gagnoa', 'babre', 'babré', 'dioulabougou', 'garahio'],
@@ -62,6 +64,43 @@ CAR_BRANDS = [
     'toyota', 'hyundai', 'peugeot', 'mercedes', 'kia', 'renault', 'nissan',
     'mitsubishi', 'ford', 'volkswagen', 'bmw', 'audi', 'suzuki', 'mazda', 'citroen'
 ]
+
+SERVICE_KEYWORDS = {
+    'plomberie': ['plombier', 'plomberie', 'fuite d eau', 'canalisation', 'robinet', 'debouchage', 'wc bouche'],
+    'electricite': ['electricien', 'electricite', 'court circuit', 'disjoncteur', 'prise electrique', 'panne de courant', 'cablage'],
+    'climatisation': ['climatisation', 'climatiseur', 'clim', 'frigo', 'refrigerateur', 'congelateur'],
+    'menage': ['menage', 'nettoyage', 'nettoyer la maison', 'nettoyage de bureau'],
+    'jardinage': ['jardinage', 'jardinier', 'tonte', 'elagage', 'espaces verts'],
+    'bricolage': ['bricolage', 'bricoleur', 'montage de meuble', 'fixation', 'petits travaux'],
+    'peinture': ['peinture', 'peintre', 'renovation', 'ravalement'],
+    'menuiserie': ['menuiserie', 'menuisier', 'serrurier', 'serrurerie', 'porte bloquee', 'fenetre'],
+    'demenagement': ['demenagement', 'demenager', 'manutention', 'transport de meubles'],
+    'informatique': ['informatique', 'ordinateur', 'ordinateur portable', 'reseau informatique', 'wifi', 'imprimante'],
+    'electromenager': ['electromenager', 'machine a laver', 'lave linge', 'four electrique', 'appareil menager'],
+    'securite': ['securite', 'gardiennage', 'camera de surveillance', 'alarme'],
+    'beaute': ['coiffeur', 'coiffure', 'esthetique', 'beaute', 'massage'],
+    'cours': ['cours particulier', 'soutien scolaire', 'professeur', 'cours a domicile'],
+}
+
+AUTO_CONTEXT_KEYWORDS = [
+    'voiture', 'vehicule', 'automobile', 'moto', 'mecanique auto', 'depannage auto',
+    'garage', 'depanneuse', 'panne auto', 'batterie auto',
+]
+
+
+def normalize_text(value: Optional[str]) -> str:
+    normalized = unicodedata.normalize('NFKD', value or '')
+    without_accents = ''.join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r'[^a-z0-9]+', ' ', without_accents.lower()).strip()
+
+
+def contains_phrase(text: str, phrase: str) -> bool:
+    normalized_phrase = normalize_text(phrase)
+    return bool(normalized_phrase and f' {normalized_phrase} ' in f' {text} ')
+
+
+def count_matches(text: str, phrases: List[str]) -> int:
+    return sum(1 for phrase in phrases if contains_phrase(text, phrase))
 
 
 class RequestAnalysisInput(BaseModel):
@@ -109,33 +148,49 @@ def analyze_request(payload: RequestAnalysisInput):
     - Détection de la marque du véhicule
     - Évaluation de l'urgence de sécurité routière
     """
-    text = payload.message.lower()
+    text = normalize_text(payload.message)
+    location_text = normalize_text(payload.location)
+    search_text = f'{text} {location_text}'.strip()
 
     # 1. Détection du type de panne
     detected_breakdown = 'other'
     max_matches = 0
     for b_type, keywords in BREAKDOWN_KEYWORDS.items():
-        matches = sum(1 for kw in keywords if kw in text)
+        matches = count_matches(text, keywords)
         if matches > max_matches:
             max_matches = matches
             detected_breakdown = b_type
+
+    service_scores = {
+        category: count_matches(search_text, keywords)
+        for category, keywords in SERVICE_KEYWORDS.items()
+    }
+    auto_score = max_matches + count_matches(search_text, AUTO_CONTEXT_KEYWORDS)
+    best_other_category = max(service_scores, key=service_scores.get)
+    best_other_score = service_scores[best_other_category]
+    if auto_score > 0 and auto_score >= best_other_score:
+        service_category = 'auto'
+    elif best_other_score > 0:
+        service_category = best_other_category
+    else:
+        service_category = 'other'
 
     # 2. Détection Axe Autoroutier / Corridor
     location_type = 'city'
     detected_highway = None
     for h_name, keywords in HIGHWAY_CORRIDORS.items():
-        if any(kw in text for kw in keywords):
+        if any(contains_phrase(search_text, kw) for kw in keywords):
             location_type = 'highway'
             detected_highway = h_name
             break
 
-    # 3. Détection de la Ville ou Commune
+    # 3. Détection de la ville ou commune, sans confondre les alias courts avec des sous-chaînes.
     detected_city = 'Abidjan'
-    detected_district = payload.location or None
+    detected_district = payload.location.strip() if payload.location else None
 
     # Recherche dans les villes de l'intérieur
     for city_key, aliases in IVORIAN_CITIES.items():
-        if any(alias in text for alias in aliases):
+        if any(contains_phrase(search_text, alias) for alias in aliases):
             detected_city = city_key.capitalize()
             detected_district = detected_city
             break
@@ -143,7 +198,7 @@ def analyze_request(payload: RequestAnalysisInput):
     # Recherche dans les communes d'Abidjan si pas encore attribué
     if detected_city == 'Abidjan':
         for district, aliases in ABIDJAN_LOCATIONS.items():
-            if any(alias in text for alias in aliases):
+            if any(contains_phrase(search_text, alias) for alias in aliases):
                 detected_district = district.capitalize()
                 break
 
@@ -153,35 +208,57 @@ def analyze_request(payload: RequestAnalysisInput):
     # 4. Détection de la marque
     detected_brand = None
     for brand in CAR_BRANDS:
-        if brand in text:
+        if contains_phrase(text, brand):
             detected_brand = brand.capitalize()
             break
 
-    # 5. Évaluation de l'urgence routière
-    # Sur autoroute ou voie rapide, une panne est automatiquement classée au minimum HIGH (danger vital)
-    urgency = 'high' if location_type == 'highway' else 'normal'
-
-    if any(w in text for w in ['urgent', 'immédiat', 'immediat', 'danger', 'bloque la circulation', 'voie rapide', 'nuit', 'seul']):
+    # 5. Repère kilométrique et urgence, en distinguant immobilisation et danger immédiat.
+    milestone_match = re.search(r'\bpk\s*(\d{1,4})\b', search_text)
+    highway_milestone = f'PK {milestone_match.group(1)}' if milestone_match else None
+    critical_terms = [
+        'danger', 'accident', 'bloque la circulation', 'bloque la voie',
+        'en pleine voie', 'au milieu de la route', 'incendie', 'blesse', 'blesses',
+        'perte de controle', 'fumee dans l habitacle',
+    ]
+    high_terms = [
+        'urgent', 'immediat', 'panne', 'immobilise', 'ne demarre pas', 'ne demarre plus',
+        'crevaison', 'pneu creve', 'moteur chauffe', 'surchauffe', 'fumee', 'fuite de carburant',
+    ]
+    if count_matches(search_text, critical_terms) > 0:
         urgency = 'critical'
-    elif any(w in text for w in ['immobilisé', 'immobilise', 'depuis des heures', 'vite', 'panne']):
+    elif location_type == 'highway' or count_matches(search_text, high_terms) > 0:
         urgency = 'high'
+    else:
+        urgency = 'normal'
 
     # Résumé
     if location_type == 'highway':
-        summary = f"Panne sur axe rapide ({detected_highway or 'Autoroute'}) vers {detected_city}. Danger de sécurité routière élevé."
+        location_summary = f'{detected_city}, {highway_milestone}' if highway_milestone else detected_city
+        summary = f"Panne sur axe rapide ({detected_highway or 'Autoroute'}) vers {location_summary}. Niveau d'urgence : {urgency}."
+    elif service_category != 'auto':
+        summary = f"Service identifié : {service_category} à {detected_district} ({detected_city})."
     else:
         summary = f"Panne identifiée : {detected_breakdown} à {detected_district} ({detected_city}). Niveau d'urgence : {urgency}."
 
+    if service_category == 'other':
+        confidence = 0.35
+    elif service_category == 'auto':
+        confidence = min(0.9, 0.65 + (0.1 * max_matches) + (0.05 if detected_brand else 0))
+    else:
+        confidence = min(0.85, 0.55 + (0.1 * best_other_score))
+
     return {
-        'service_category': 'auto',
+        'service_category': service_category,
+        'is_automotive': service_category == 'auto',
         'breakdown_type': detected_breakdown,
         'location_type': location_type,
         'highway_axis': detected_highway,
+        'highway_milestone': highway_milestone,
         'detected_city': detected_city,
         'detected_district': detected_district,
         'detected_brand': detected_brand,
         'urgency': urgency,
-        'confidence': 0.94 if max_matches > 0 else 0.70,
+        'confidence': round(confidence, 2),
         'summary': summary
     }
 

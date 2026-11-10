@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 
-interface MarkerData {
+export interface MarkerData {
   lat: number;
   lng: number;
   title: string;
   description?: string;
   type?: 'incident' | 'provider';
+  linkUrl?: string;
 }
 
 interface InteractiveMapProps {
@@ -30,88 +31,113 @@ export default function InteractiveMap({
 }: InteractiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const markerLayerRef = useRef<any>(null);
+  const locationSelectRef = useRef(onLocationSelect);
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
+    locationSelectRef.current = onLocationSelect;
+  }, [onLocationSelect]);
+
+  useEffect(() => {
+    let disposed = false;
 
     async function initMap() {
       if (!mapContainerRef.current) return;
       const L = await import('leaflet');
+      if (disposed || !mapContainerRef.current) return;
 
-      // Nettoyer l'ancienne instance si elle existe
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-
-      // Création de la carte
       const map = L.map(mapContainerRef.current).setView([centerLat, centerLng], zoom);
       mapInstanceRef.current = map;
 
-      // Fond de carte OpenStreetMap haute performance
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19,
       }).addTo(map);
 
-      // Définition des icônes SVG personnalisées
-      const incidentIcon = L.divIcon({
-        className: 'custom-map-icon',
-        html: `
-          <div style="background-color: #ea580c; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-weight: bold; font-size: 16px;">
-            ⚠️
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+      map.on('click', (event: any) => {
+        locationSelectRef.current?.(event.latlng.lat, event.latlng.lng);
       });
-
-      const providerIcon = L.divIcon({
-        className: 'custom-map-icon',
-        html: `
-          <div style="background-color: #16a34a; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-weight: bold; font-size: 16px;">
-            🔧
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
-
-      // Ajout des marqueurs
-      markers.forEach((m) => {
-        const icon = m.type === 'provider' ? providerIcon : incidentIcon;
-        const marker = L.marker([m.lat, m.lng], { icon }).addTo(map);
-        if (m.title) {
-          marker.bindPopup(`
-            <div style="font-family: Arial, sans-serif; font-size: 12px; line-height: 1.4;">
-              <strong style="color: #0f172a; font-size: 13px;">${m.title}</strong>
-              ${m.description ? `<p style="margin: 4px 0 0; color: #475569;">${m.description}</p>` : ''}
-            </div>
-          `);
-        }
-      });
-
-      // Écouter le clic pour sélectionner une position
-      if (onLocationSelect) {
-        map.on('click', (e: any) => {
-          onLocationSelect(e.latlng.lat, e.latlng.lng);
-        });
-      }
+      setMapReady(true);
     }
 
     initMap();
 
     return () => {
-      isMounted = false;
+      disposed = true;
+      setMapReady(false);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
       }
+      markerLayerRef.current = null;
     };
-  }, [centerLat, centerLng, zoom, markers, onLocationSelect]);
+  }, [centerLat, centerLng, zoom]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function updateMarkers() {
+      const map = mapInstanceRef.current;
+      if (!map || !mapReady) return;
+      const L = await import('leaflet');
+      if (cancelled || mapInstanceRef.current !== map) return;
+
+      if (markerLayerRef.current) markerLayerRef.current.remove();
+      const layer = L.featureGroup();
+      const providerIcon = L.divIcon({
+        className: 'assistci-map-icon',
+        html: '<span>P</span>',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+      const incidentIcon = L.divIcon({
+        className: 'assistci-map-icon assistci-map-icon-incident',
+        html: '<span>!</span>',
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+      });
+
+      markers.forEach((markerData) => {
+        if (!Number.isFinite(markerData.lat) || !Number.isFinite(markerData.lng)) return;
+        const marker = L.marker([markerData.lat, markerData.lng], {
+          icon: markerData.type === 'incident' ? incidentIcon : providerIcon,
+        });
+        const popup = document.createElement('div');
+        popup.className = 'assistci-map-popup';
+        const title = document.createElement('strong');
+        title.textContent = markerData.title;
+        popup.appendChild(title);
+        if (markerData.description) {
+          const description = document.createElement('p');
+          description.textContent = markerData.description;
+          popup.appendChild(description);
+        }
+        if (markerData.linkUrl?.startsWith('/providers/')) {
+          const link = document.createElement('a');
+          link.href = markerData.linkUrl;
+          link.textContent = 'Voir le profil';
+          popup.appendChild(link);
+        }
+        marker.bindPopup(popup);
+        marker.addTo(layer);
+      });
+
+      markerLayerRef.current = layer.addTo(map);
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
+      }
+    }
+
+    updateMarkers();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapReady, markers]);
 
   return (
-    <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm z-0">
+    <div className="relative rounded-2xl overflow-hidden border border-line shadow-sm z-0">
       <div ref={mapContainerRef} style={{ height, width: '100%' }} />
     </div>
   );

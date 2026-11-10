@@ -197,9 +197,105 @@ async function getMe(req, res) {
   }
 }
 
+async function updateMe(req, res) {
+  try {
+    const userId = req.user.userId;
+    const { first_name, last_name, phone, avatar_url } = req.body;
+
+    if (!first_name || !last_name || !phone) {
+      return res.status(400).json({
+        error: 'Champs manquants',
+        message: 'Le prénom, le nom et le téléphone sont obligatoires',
+      });
+    }
+
+    // Unicité du téléphone (hors utilisateur courant)
+    const conflict = await db.query(
+      'SELECT id FROM users WHERE phone = $1 AND id <> $2',
+      [phone.trim(), userId]
+    );
+    if (conflict.rows.length > 0) {
+      return res.status(409).json({
+        error: 'Conflit',
+        message: 'Ce numéro de téléphone est déjà utilisé par un autre compte',
+      });
+    }
+
+    const result = await db.query(
+      `UPDATE users
+       SET first_name = $1, last_name = $2, phone = $3, avatar_url = $4, updated_at = NOW()
+       WHERE id = $5
+       RETURNING id, first_name, last_name, email, phone, role, verification_status, avatar_url, created_at`,
+      [
+        first_name.trim(),
+        last_name.trim(),
+        phone.trim(),
+        avatar_url || null,
+        userId,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    return res.json({ message: 'Profil mis à jour', user: result.rows[0] });
+  } catch (error) {
+    console.error('Erreur updateMe:', error);
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
+}
+
+async function changePassword(req, res) {
+  try {
+    const userId = req.user.userId;
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({
+        error: 'Champs manquants',
+        message: 'Le mot de passe actuel et le nouveau mot de passe sont requis',
+      });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({
+        error: 'Mot de passe trop court',
+        message: 'Le nouveau mot de passe doit contenir au moins 6 caractères',
+      });
+    }
+
+    const userRes = await db.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    const isMatch = await bcrypt.compare(current_password, userRes.rows[0].password_hash);
+    if (!isMatch) {
+      return res.status(401).json({
+        error: 'Mot de passe incorrect',
+        message: 'Le mot de passe actuel est incorrect',
+      });
+    }
+
+    const password_hash = await bcrypt.hash(new_password, 10);
+    await db.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [
+      password_hash,
+      userId,
+    ]);
+
+    return res.json({ message: 'Mot de passe modifié avec succès' });
+  } catch (error) {
+    console.error('Erreur changePassword:', error);
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
+}
+
 module.exports = {
   register,
   login,
   getMe,
+  updateMe,
+  changePassword,
 };
 

@@ -57,3 +57,39 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   return data;
 }
 
+export async function postApiForm(endpoint: string, formData: FormData) {
+  const token = getAuthToken();
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || 'Une erreur est survenue');
+  }
+
+  return data;
+}
+
+export async function downloadApiFile(endpoint: string, filename: string): Promise<void> {
+  const token = getAuthToken();
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.message || data?.error || 'Impossible de récupérer le document');
+  }
+
+  const blobUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+}
+

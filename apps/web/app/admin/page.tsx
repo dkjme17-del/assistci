@@ -13,8 +13,9 @@ import {
   Clock,
   Loader2,
   ExternalLink,
+  Download,
 } from 'lucide-react';
-import { fetchApi, getCurrentUser } from '../../lib/api';
+import { downloadApiFile, fetchApi, getCurrentUser } from '../../lib/api';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function AdminPage() {
   const [pendingKyc, setPendingKyc] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [documentLoading, setDocumentLoading] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = async () => {
@@ -76,11 +78,28 @@ export default function AdminPage() {
     }
   };
 
+  const handleDownloadDocument = async (doc: any) => {
+    setDocumentLoading(doc.id);
+    setError(null);
+    try {
+      if (/^https:\/\//i.test(doc.document_url || '')) {
+        window.open(doc.document_url, '_blank', 'noopener,noreferrer');
+      } else {
+        const extension = String(doc.document_url || '').match(/\.(pdf|png|jpe?g)$/i)?.[0] || '.file';
+        await downloadApiFile(`/kyc/documents/${doc.id}/file`, `justificatif-${doc.id}${extension}`);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Impossible de récupérer le justificatif');
+    } finally {
+      setDocumentLoading(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-20 text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-600 mx-auto mb-3" />
-        <p className="text-slate-500 text-sm">Chargement du panneau d'administration...</p>
+        <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto mb-3" />
+        <p className="text-muted text-sm">Chargement du panneau d'administration...</p>
       </div>
     );
   }
@@ -92,10 +111,10 @@ export default function AdminPage() {
           <ShieldAlert className="w-3.5 h-3.5" />
           Supervision & Modération
         </div>
-        <h1 className="text-3xl font-extrabold text-slate-900">
+        <h1 className="text-3xl font-extrabold text-navy">
           Tableau de bord Administrateur ASSISTCI
         </h1>
-        <p className="text-slate-600 mt-1">
+        <p className="text-muted mt-1">
           Supervisez l’activité de la plateforme et examinez les dossiers de vérification d’identité (KYC).
         </p>
       </div>
@@ -109,32 +128,32 @@ export default function AdminPage() {
       {/* Cartes statistiques */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center gap-3 text-slate-500 mb-2">
+          <div className="bg-white p-6 rounded-2xl border border-line shadow-sm">
+            <div className="flex items-center gap-3 text-muted mb-2">
               <Users className="w-5 h-5 text-blue-500" />
               <span className="text-xs font-bold uppercase tracking-wider">Utilisateurs</span>
             </div>
-            <div className="text-3xl font-extrabold text-slate-900">{stats.total_users}</div>
+            <div className="text-3xl font-extrabold text-navy">{stats.total_users}</div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center gap-3 text-slate-500 mb-2">
-              <Wrench className="w-5 h-5 text-orange-500" />
+          <div className="bg-white p-6 rounded-2xl border border-line shadow-sm">
+            <div className="flex items-center gap-3 text-muted mb-2">
+              <Wrench className="w-5 h-5 text-accent" />
               <span className="text-xs font-bold uppercase tracking-wider">Prestataires</span>
             </div>
-            <div className="text-3xl font-extrabold text-slate-900">{stats.total_providers}</div>
+            <div className="text-3xl font-extrabold text-navy">{stats.total_providers}</div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center gap-3 text-slate-500 mb-2">
+          <div className="bg-white p-6 rounded-2xl border border-line shadow-sm">
+            <div className="flex items-center gap-3 text-muted mb-2">
               <Car className="w-5 h-5 text-emerald-500" />
               <span className="text-xs font-bold uppercase tracking-wider">Demandes d'aide</span>
             </div>
-            <div className="text-3xl font-extrabold text-slate-900">{stats.total_requests}</div>
+            <div className="text-3xl font-extrabold text-navy">{stats.total_requests}</div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center gap-3 text-slate-500 mb-2">
+          <div className="bg-white p-6 rounded-2xl border border-line shadow-sm">
+            <div className="flex items-center gap-3 text-muted mb-2">
               <Clock className="w-5 h-5 text-amber-500" />
               <span className="text-xs font-bold uppercase tracking-wider">KYC en attente</span>
             </div>
@@ -144,13 +163,13 @@ export default function AdminPage() {
       )}
 
       {/* File d'attente KYC */}
-      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+      <div className="bg-white p-6 sm:p-8 rounded-3xl border border-line shadow-sm space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">
+            <h2 className="text-xl font-bold text-navy">
               Dossiers de vérification d'identité à examiner
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-muted mt-0.5">
               Vérifiez la conformité des pièces d'identité avant d'accorder le statut vérifié aux prestataires.
             </p>
           </div>
@@ -160,16 +179,16 @@ export default function AdminPage() {
         </div>
 
         {pendingKyc.length === 0 ? (
-          <div className="py-12 text-center text-slate-500 space-y-2">
+          <div className="py-12 text-center text-muted space-y-2">
             <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-            <p className="font-semibold text-slate-800">Aucun dossier en attente de modération</p>
-            <p className="text-xs text-slate-400">Toutes les pièces d'identité ont été traitées.</p>
+            <p className="font-semibold text-navy">Aucun dossier en attente de modération</p>
+            <p className="text-xs text-muted">Toutes les pièces d'identité ont été traitées.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-400">
+                <tr className="border-b border-line text-xs font-bold uppercase tracking-wider text-muted">
                   <th className="pb-3">Utilisateur</th>
                   <th className="pb-3">Rôle / Atelier</th>
                   <th className="pb-3">Type Document</th>
@@ -177,35 +196,34 @@ export default function AdminPage() {
                   <th className="pb-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-line">
                 {pendingKyc.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-slate-50/50">
+                  <tr key={doc.id} className="hover:bg-canvas">
                     <td className="py-4">
-                      <div className="font-bold text-slate-900">{doc.first_name} {doc.last_name}</div>
-                      <div className="text-xs text-slate-400">{doc.email} • {doc.phone}</div>
+                      <div className="font-bold text-navy">{doc.first_name} {doc.last_name}</div>
+                      <div className="text-xs text-muted">{doc.email} • {doc.phone}</div>
                     </td>
                     <td className="py-4">
-                      <span className="text-xs px-2 py-0.5 rounded font-semibold bg-slate-100 text-slate-700 uppercase">
+                      <span className="text-xs px-2 py-0.5 rounded font-semibold bg-line text-navy uppercase">
                         {doc.role}
                       </span>
                       {doc.business_name && (
-                        <div className="text-xs text-slate-500 mt-0.5 font-medium">{doc.business_name}</div>
+                        <div className="text-xs text-muted mt-0.5 font-medium">{doc.business_name}</div>
                       )}
                     </td>
-                    <td className="py-4 font-semibold text-slate-800 uppercase text-xs">
+                    <td className="py-4 font-semibold text-navy uppercase text-xs">
                       {doc.document_type}
                     </td>
                     <td className="py-4">
-                      <a
-                        href={doc.document_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-orange-600 hover:underline font-semibold"
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadDocument(doc)}
+                        disabled={documentLoading === doc.id}
+                        className="inline-flex items-center gap-1 text-xs text-accent hover:underline font-semibold disabled:opacity-50"
                       >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Voir document</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
+                        {documentLoading === doc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : /^https:\/\//i.test(doc.document_url || '') ? <ExternalLink className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+                        <span>{/^https:\/\//i.test(doc.document_url || '') ? 'Ouvrir le lien sécurisé' : 'Télécharger en privé'}</span>
+                      </button>
                     </td>
                     <td className="py-4 text-right">
                       <div className="flex items-center justify-end gap-2">

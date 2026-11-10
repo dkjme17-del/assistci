@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS service_providers (
   user_id INT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   business_name VARCHAR(255),
   bio TEXT,
+  logo_url VARCHAR(500),
   specialties TEXT[], -- ex: ARRAY['mecanique', 'remorquage', 'electricite_auto']
   rating NUMERIC(3,2) DEFAULT 0.0 CHECK (rating BETWEEN 0 AND 5),
   total_reviews INT NOT NULL DEFAULT 0,
@@ -89,6 +90,17 @@ CREATE TABLE IF NOT EXISTS service_providers (
 
 CREATE INDEX IF NOT EXISTS idx_providers_rating ON service_providers(rating);
 CREATE INDEX IF NOT EXISTS idx_providers_avail ON service_providers(availability);
+
+-- Galerie de réalisations du prestataire
+CREATE TABLE IF NOT EXISTS provider_photos (
+  id SERIAL PRIMARY KEY,
+  provider_id INT NOT NULL REFERENCES service_providers(id) ON DELETE CASCADE,
+  photo_url VARCHAR(500) NOT NULL,
+  caption VARCHAR(255),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_photos_provider ON provider_photos(provider_id);
 
 CREATE TABLE IF NOT EXISTS service_areas (
   id SERIAL PRIMARY KEY,
@@ -262,9 +274,20 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 INSERT INTO service_categories (name, slug, description, icon_name)
 VALUES
   ('Assistance Automobile', 'auto', 'Dépannage, remorquage, mécanique d urgence, batterie et crevaison à Abidjan', 'car'),
-  ('Plomberie', 'plomberie', 'Réparation fuites, débouchage et dépannage plomberie d urgence', 'wrench'),
-  ('Électricité', 'electricite', 'Court-circuit, dépannage électrique et réparations diverses', 'zap'),
-  ('Climatisation & Froid', 'froid', 'Réparation climatiseurs maison et automobile', 'fan')
+  ('Plomberie', 'plomberie', 'Réparation de fuites, débouchage et dépannage plomberie', 'droplets'),
+  ('Électricité', 'electricite', 'Court-circuit, installation et dépannage électrique', 'zap'),
+  ('Climatisation & Froid', 'climatisation', 'Installation, entretien et réparation de climatiseurs et frigos', 'snowflake'),
+  ('Ménage & Nettoyage', 'menage', 'Nettoyage de maison, bureaux et remise en état', 'sparkles'),
+  ('Jardinage & Espaces verts', 'jardinage', 'Tonte, élagage, entretien de jardins et espaces verts', 'trees'),
+  ('Bricolage & Petits travaux', 'bricolage', 'Montage de meubles, fixations, petites réparations', 'hammer'),
+  ('Peinture & Rénovation', 'peinture', 'Peinture intérieure/extérieure et travaux de finition', 'paint-roller'),
+  ('Menuiserie & Serrurerie', 'menuiserie', 'Portes, fenêtres, serrures et réparations bois', 'door-open'),
+  ('Déménagement & Manutention', 'demenagement', 'Transport de meubles, chargement et manutention', 'truck'),
+  ('Informatique & Réseaux', 'informatique', 'Réparation d’ordinateurs, installation et dépannage réseau', 'laptop'),
+  ('Électroménager', 'electromenager', 'Réparation de machines à laver, réfrigérateurs et appareils', 'washing-machine'),
+  ('Sécurité & Gardiennage', 'securite', 'Installation de caméras, alarmes et services de sécurité', 'shield'),
+  ('Beauté & Bien-être', 'beaute', 'Coiffure, esthétique et soins à domicile', 'scissors'),
+  ('Cours & Soutien scolaire', 'cours', 'Cours particuliers et soutien scolaire à domicile', 'graduation-cap')
 ON CONFLICT (slug) DO NOTHING;
 
 -- Compte administrateur par défaut (mot de passe : Admin123! — À CHANGER EN PRODUCTION)

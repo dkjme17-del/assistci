@@ -18,6 +18,10 @@ const aiRoutes = require('./routes/aiRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
+const providerRoutes = require('./routes/providerRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
+const { UPLOADS_DIR, ensureUploadDirs } = require('./config/uploads');
+const { ensureKycUploadDir } = require('./config/kycStorage');
 
 const app = express();
 
@@ -25,7 +29,8 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Sécurité des en-têtes HTTP
-app.use(helmet());
+// crossOriginResourcePolicy "cross-origin" : autorise l'app web (autre origine) à afficher les images /uploads
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // Journalisation structurée avec identifiant de requête
 app.use(
@@ -46,7 +51,7 @@ app.use(
   cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true); // clients mobiles / curl
-      if (config.corsOrigins.includes(origin)) return callback(null, true);
+      if (config.corsOrigins.includes('*') || config.corsOrigins.includes(origin)) return callback(null, true);
       return callback(null, false);
     },
     credentials: true,
@@ -55,6 +60,11 @@ app.use(
 
 // Corps JSON limité
 app.use(express.json({ limit: '1mb' }));
+
+// Fichiers téléversés (avatars, logos, photos) servis en statique
+ensureUploadDirs();
+ensureKycUploadDir();
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d', fallthrough: true }));
 
 // Healthcheck (exclu du rate limiting)
 app.get('/api/health', async (req, res) => {
@@ -110,6 +120,8 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/providers', providerRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // Route inexistante
 app.use((req, res) => {

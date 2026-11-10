@@ -15,11 +15,12 @@ async function createRequest(req, res) {
       location_type,
       highway_axis,
       highway_milestone,
-      city = 'Abidjan',
+      city,
       district,
       latitude,
       longitude,
       urgency,
+      media,
     } = req.body;
 
     if (!category_id || !title || !description) {
@@ -32,13 +33,26 @@ async function createRequest(req, res) {
     // Enrichissement automatique via le microservice IA (analyse en langage naturel)
     const analysis = await aiService.analyzeRequest(description, district);
     if (analysis) {
-      if (!breakdown_type || breakdown_type === 'other') breakdown_type = analysis.breakdown_type;
-      if (!location_type) location_type = analysis.location_type || 'city';
-      if (!highway_axis && analysis.highway_axis) highway_axis = analysis.highway_axis;
-      if (!district) district = analysis.detected_district;
-      if (!vehicle_brand && analysis.detected_brand) vehicle_brand = analysis.detected_brand;
-      if (!urgency) urgency = analysis.urgency;
+      const isAutomotive = analysis.is_automotive !== false && analysis.service_category !== 'other';
+      if (isAutomotive) {
+        if (!breakdown_type || breakdown_type === 'other') breakdown_type = analysis.breakdown_type;
+        if (!location_type) location_type = analysis.location_type || 'city';
+        if (!highway_axis && analysis.highway_axis) highway_axis = analysis.highway_axis;
+        if (!highway_milestone && analysis.highway_milestone) highway_milestone = analysis.highway_milestone;
+        if (!vehicle_brand && analysis.detected_brand) vehicle_brand = analysis.detected_brand;
+        if (!urgency) urgency = analysis.urgency;
+
+        if (analysis.location_type === 'highway') {
+          if ((!city || city === 'Abidjan') && analysis.detected_city) city = analysis.detected_city;
+          if ((!district || /autoroute|axe routier/i.test(district)) && analysis.detected_district) {
+            district = analysis.detected_district;
+          }
+        }
+      }
+      if (!district && analysis.detected_district) district = analysis.detected_district;
     }
+
+    city = city || 'Abidjan';
 
     const result = await db.query(
       `INSERT INTO service_requests (
@@ -70,6 +84,20 @@ async function createRequest(req, res) {
     );
 
     const newRequest = result.rows[0];
+
+    // Photos jointes à la demande (URLs déjà téléversées via /api/uploads)
+    if (Array.isArray(media) && media.length > 0) {
+      for (const item of media.slice(0, 8)) {
+        const url = typeof item === 'string' ? item : item?.url;
+        const type = typeof item === 'string' ? 'image' : item?.type || 'image';
+        if (url) {
+          await db.query(
+            'INSERT INTO request_media (request_id, media_url, media_type) VALUES ($1, $2, $3)',
+            [newRequest.id, url, type === 'video' ? 'video' : 'image']
+          );
+        }
+      }
+    }
 
     return res.status(201).json({
       message: 'Demande d’assistance créée avec succès',
@@ -197,9 +225,76 @@ async function getRequestById(req, res) {
   }
 }
 
+// Ajoute une photo à une demande existante (propriétaire client)
+async function addRequestMedia(req, res) {
+  try {
+    const clientId = req.user.userId;
+    const { id } = req.params;
+    const { media_url, media_type } = req.body;
+
+    if (!media_url) {
+      return res.status(400).json({ error: 'L’URL du média est requise' });
+    }
+
+    const ownerRes = await db.query('SELECT client_id FROM service_requests WHERE id = $1', [id]);
+    if (ownerRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Demande introuvable' });
+    }
+    if (ownerRes.rows[0].client_id !== clientId) {
+      return res.status(403).json({ error: 'Action non autorisée' });
+    }
+
+    const mediaCountRes = await db.query(
+      'SELECT COUNT(*) FROM request_media WHERE request_id = $1',
+      [id]
+    );
+    if (parseInt(mediaCountRes.rows[0].count, 10) >= 8) {
+      return res.status(400).json({ error: 'Une demande peut contenir jusqu’à 8 photos' });
+    }
+
+    const result = await db.query(
+      `INSERT INTO request_media (request_id, media_url, media_type)
+       VALUES ($1, $2, $3) RETURNING id, media_url, media_type, created_at`,
+      [id, media_url, media_type === 'video' ? 'video' : 'image']
+    );
+
+    return res.status(201).json({ message: 'Photo ajoutée', media: result.rows[0] });
+  } catch (error) {
+    console.error('Erreur addRequestMedia:', error);
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
+}
+
+// Supprime une photo d'une demande (propriétaire client)
+async function deleteRequestMedia(req, res) {
+  try {
+    const clientId = req.user.userId;
+    const { id, mediaId } = req.params;
+
+    const result = await db.query(
+      `DELETE FROM request_media rm
+       USING service_requests sr
+       WHERE rm.request_id = sr.id AND sr.client_id = $1 AND rm.request_id = $2 AND rm.id = $3
+       RETURNING rm.id`,
+      [clientId, id, mediaId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Média introuvable' });
+    }
+
+    return res.json({ message: 'Média supprimé' });
+  } catch (error) {
+    console.error('Erreur deleteRequestMedia:', error);
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
+}
+
 module.exports = {
   createRequest,
   getMyRequests,
   getRequestById,
+  addRequestMedia,
+  deleteRequestMedia,
 };
 

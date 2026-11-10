@@ -9,6 +9,8 @@ const { authenticateToken } = require('../middlewares/auth');
 router.post('/', authenticateToken, requestController.createRequest);
 router.get('/', authenticateToken, requestController.getMyRequests);
 router.get('/:id', authenticateToken, requestController.getRequestById);
+router.post('/:id/media', authenticateToken, requestController.addRequestMedia);
+router.delete('/:id/media/:mediaId', authenticateToken, requestController.deleteRequestMedia);
 router.patch('/:id/status', authenticateToken, proposalController.updateRequestStatus);
 
 // Propositions & Devis

@@ -6,6 +6,11 @@
 		reverse_proxy api:4001
 	}
 
+	# Fichiers téléversés (avatars, logos, photos) servis par l'API
+	handle /uploads/* {
+		reverse_proxy api:4001
+	}
+
 	# Application web Next.js
 	handle {
 		reverse_proxy web:3001

@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Car, Wrench, User, Mail, Phone, Lock, Building, Loader2, ArrowRight } from 'lucide-react';
 import { fetchApi, setAuthToken, setCurrentUser } from '../../lib/api';
 
-export default function RegisterPage() {
+function RegisterContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const roleParam = searchParams.get('role');
 
-  const [role, setRole] = useState<'client' | 'provider'>('client');
+  const [role, setRole] = useState<'client' | 'provider'>(roleParam === 'provider' ? 'provider' : 'client');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -51,28 +53,26 @@ export default function RegisterPage() {
     }
   };
 
+  const inputClass = 'field';
+
   return (
-    <div className="max-w-lg mx-auto px-4 py-12">
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+    <div className="max-w-lg mx-auto px-6 py-12">
+      <div className="card p-8 gap-5">
+        <div className="text-center">
+          <div className="w-12 h-12 bg-accent-light text-accent-dark rounded-card flex items-center justify-center mx-auto mb-3">
             <Car className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Créer un compte ASSISTCI</h1>
-          <p className="text-sm text-slate-500">
-            Rejoignez le réseau d'assistance automobile à Abidjan
-          </p>
+          <h1 className="text-2xl font-extrabold">Créer un compte ASSISTCI</h1>
+          <p className="text-sm text-muted mt-1">Rejoignez le réseau d'assistance automobile à Abidjan</p>
         </div>
 
-        {/* Sélecteur de Rôle */}
-        <div className="grid grid-cols-2 gap-3 p-1 bg-slate-100 rounded-2xl">
+        {/* Sélecteur de rôle */}
+        <div className="grid grid-cols-2 gap-1 bg-line rounded-badge p-1">
           <button
             type="button"
             onClick={() => setRole('client')}
-            className={`py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition ${
-              role === 'client'
-                ? 'bg-white text-orange-600 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+            className={`min-h-[44px] rounded-badge font-bold text-sm flex items-center justify-center gap-2 transition ${
+              role === 'client' ? 'bg-white text-accent shadow-card' : 'text-muted hover:text-navy'
             }`}
           >
             <User className="w-4 h-4" />
@@ -81,10 +81,8 @@ export default function RegisterPage() {
           <button
             type="button"
             onClick={() => setRole('provider')}
-            className={`py-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition ${
-              role === 'provider'
-                ? 'bg-white text-orange-600 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+            className={`min-h-[44px] rounded-badge font-bold text-sm flex items-center justify-center gap-2 transition ${
+              role === 'provider' ? 'bg-white text-accent shadow-card' : 'text-muted hover:text-navy'
             }`}
           >
             <Wrench className="w-4 h-4" />
@@ -93,135 +91,80 @@ export default function RegisterPage() {
         </div>
 
         {error && (
-          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-            {error}
-          </div>
+          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{error}</div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Prénom *
-              </label>
-              <input
-                type="text"
-                required
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="Ex: Jean"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
+              <label className="field-label mb-1">Prénom *</label>
+              <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Ex: Jean" className={inputClass} />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Nom *
-              </label>
-              <input
-                type="text"
-                required
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="Ex: Konan"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
+              <label className="field-label mb-1">Nom *</label>
+              <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Ex: Konan" className={inputClass} />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Numéro de téléphone *
-            </label>
+            <label className="field-label mb-1">Numéro de téléphone *</label>
             <div className="relative">
-              <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="tel"
-                required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+225 07 00 00 00 00"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
+              <Phone className="w-4 h-4 text-muted absolute left-3.5 top-4" />
+              <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+225 07 00 00 00 00" className={`${inputClass} pl-10`} />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Adresse Email *
-            </label>
+            <label className="field-label mb-1">Adresse Email *</label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="jean.konan@example.com"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
+              <Mail className="w-4 h-4 text-muted absolute left-3.5 top-4" />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jean.konan@example.com" className={`${inputClass} pl-10`} />
             </div>
           </div>
 
           {role === 'provider' && (
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Nom commercial / Atelier
-              </label>
+              <label className="field-label mb-1">Nom commercial / Atelier</label>
               <div className="relative">
-                <Building className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="Ex: Garage Express Cocody"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
+                <Building className="w-4 h-4 text-muted absolute left-3.5 top-4" />
+                <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Ex: Garage Express Cocody" className={`${inputClass} pl-10`} />
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Mot de passe sécurisé *
-            </label>
+            <label className="field-label mb-1">Mot de passe sécurisé *</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 6 caractères"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
+              <Lock className="w-4 h-4 text-muted absolute left-3.5 top-4" />
+              <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 6 caractères" className={`${inputClass} pl-10`} />
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold py-3.5 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm mt-2"
-          >
+          <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-50 mt-1">
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
                 <span>Créer mon compte</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-4 h-4 ml-2" />
               </>
             )}
           </button>
         </form>
 
-        <div className="border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+        <div className="border-t border-line pt-4 text-center text-xs text-muted">
           Déjà inscrit ?{' '}
-          <Link href="/login" className="text-orange-600 font-bold hover:underline">
-            Se connecter
-          </Link>
+          <Link href="/login" className="text-accent font-bold hover:underline">Se connecter</Link>
         </div>
       </div>
     </div>
   );
 }
 
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-muted">Chargement...</div>}>
+      <RegisterContent />
+    </Suspense>
+  );
+}

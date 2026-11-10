@@ -101,7 +101,31 @@ async function getProviderReviews(req, res) {
   }
 }
 
+// Liste des avis laissés par le client connecté
+async function getMyReviews(req, res) {
+  try {
+    const clientId = req.user.userId;
+    const result = await db.query(
+      `SELECT r.id, r.rating, r.comment, r.created_at,
+              sp.id AS provider_id, sp.business_name,
+              sr.id AS request_id, sr.title AS request_title
+       FROM reviews r
+       JOIN service_providers sp ON r.provider_id = sp.id
+       JOIN service_requests sr ON r.request_id = sr.id
+       WHERE r.client_id = $1
+       ORDER BY r.created_at DESC
+       LIMIT 100`,
+      [clientId]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error('Erreur getMyReviews:', error);
+    return res.status(500).json({ error: 'Erreur lors de la récupération de vos avis' });
+  }
+}
+
 module.exports = {
   createReview,
   getProviderReviews,
+  getMyReviews,
 };

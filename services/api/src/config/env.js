@@ -20,6 +20,10 @@ const schema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
+    FILE_UPLOADS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
 
     // Alternative : chaîne de connexion complète (ex. Neon). Prioritaire sur PGHOST/PGUSER/…
     // Chaîne vide (= non fournie) autorisée afin de rester compatible Docker Compose.
@@ -99,6 +103,7 @@ const config = {
   corsOrigins: env.CORS_ORIGINS.split(',')
     .map((o) => o.trim())
     .filter(Boolean),
+  fileUploadsEnabled: env.FILE_UPLOADS_ENABLED,
   ai: {
     url: env.AI_SERVICE_URL.replace(/\/$/, ''),
     timeoutMs: env.AI_TIMEOUT_MS,

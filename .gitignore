@@ -7,3 +7,8 @@ npm-debug.log*
 __pycache__
 venv
 *.pyc
+
+# Fichiers téléversés (avatars, logos, photos)
+services/api/uploads/
+services/api/private-uploads/
+uploads/

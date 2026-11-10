@@ -1,19 +1,18 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  Wrench,
-  Star,
-  ShieldCheck,
-  MapPin,
-  Phone,
-  CheckCircle,
-  Filter,
-  Loader2,
-  Car,
-} from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Star, MapPin, Loader2, Pencil } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { fetchApi } from '../../lib/api';
+import IdentityAvatar from '../../components/IdentityAvatar';
+import type { MarkerData } from '../../components/InteractiveMap';
+
+const InteractiveMap = dynamic(() => import('../../components/InteractiveMap'), {
+  ssr: false,
+  loading: () => <div className="h-[520px] animate-pulse rounded-card bg-line" />,
+});
 
 const ABIDJAN_COMMUNES = [
   'Toutes les communes',
@@ -29,161 +28,213 @@ const ABIDJAN_COMMUNES = [
   'Bingerville',
 ];
 
-export default function ProvidersPage() {
+export default function SearchResultsPage() {
+  return (
+    <Suspense fallback={<div className="py-16 text-center">
+      <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto mb-3" />
+      <p className="text-muted text-sm">Recherche des prestataires...</p>
+    </div>}>
+      <SearchResultsContent />
+    </Suspense>
+  );
+}
+
+function SearchResultsContent() {
+  const searchParams = useSearchParams();
+  const q = searchParams.get('q') || '';
+  const districtParam = searchParams.get('district') || '';
+
   const [providers, setProviders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDistrict, setSelectedDistrict] = useState('Toutes les communes');
-  const [emergencyOnly, setEmergencyOnly] = useState(false);
+  const [selectedDistrict, setSelectedDistrict] = useState(
+    ABIDJAN_COMMUNES.includes(districtParam) ? districtParam : 'Toutes les communes'
+  );
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<'rapide' | 'note'>('rapide');
 
   useEffect(() => {
-    const loadProviders = async () => {
+    const load = async () => {
       setLoading(true);
       try {
-        let endpoint = '/services/providers';
         const params = new URLSearchParams();
-        if (selectedDistrict !== 'Toutes les communes') {
-          params.append('district', selectedDistrict);
-        }
-        if (emergencyOnly) {
-          params.append('emergency_only', 'true');
-        }
-        if (params.toString()) {
-          endpoint += `?${params.toString()}`;
-        }
-
-        const data = await fetchApi(endpoint);
-        setProviders(data);
+        if (selectedDistrict !== 'Toutes les communes') params.set('district', selectedDistrict);
+        if (availableOnly) params.set('emergency_only', 'true');
+        const qs = params.toString();
+        const data = await fetchApi(`/services/providers${qs ? `?${qs}` : ''}`);
+        setProviders(data || []);
       } catch (err) {
         console.error('Erreur chargement prestataires:', err);
+        setProviders([]);
       } finally {
         setLoading(false);
       }
     };
+    load();
+  }, [selectedDistrict, availableOnly]);
 
-    loadProviders();
-  }, [selectedDistrict, emergencyOnly]);
+  useEffect(() => {
+    if (districtParam && ABIDJAN_COMMUNES.includes(districtParam)) {
+      setSelectedDistrict(districtParam);
+    }
+  }, [districtParam]);
+
+  const ql = q.trim().toLowerCase();
+  const matchesQ = (p: any) => {
+    if (!ql) return true;
+    const specs = Array.isArray(p.specialties) ? p.specialties.join(' ') : '';
+    const hay = `${p.business_name || ''} ${p.first_name || ''} ${p.last_name || ''} ${p.bio || ''} ${specs} ${p.category_name || ''}`.toLowerCase();
+    return hay.includes(ql);
+  };
+
+  const filtered = providers.filter(
+    (p) => matchesQ(p) && (verifiedOnly ? p.verification_status === 'verified' : true)
+  );
+
+  const sorted = [...filtered].sort((a, b) =>
+    sortBy === 'note'
+      ? parseFloat(b.rating || 0) - parseFloat(a.rating || 0)
+      : (b.emergency_ready ? 1 : 0) - (a.emergency_ready ? 1 : 0)
+  );
+
+  const mapMarkers: MarkerData[] = sorted.flatMap((provider) => {
+    if (provider.latitude == null || provider.longitude == null) return [];
+    const lat = Number(provider.latitude);
+    const lng = Number(provider.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [];
+    return [{
+      lat,
+      lng,
+      type: 'provider',
+      title: provider.business_name || `${provider.first_name || ''} ${provider.last_name || ''}`.trim(),
+      description: [provider.district, provider.city].filter(Boolean).join(', ') || 'Abidjan',
+      linkUrl: `/providers/${provider.id}`,
+    }];
+  });
+
+  const title = q
+    ? `${q.charAt(0).toUpperCase() + q.slice(1)} · près de vous`
+    : 'Prestataires · près de vous';
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-12 space-y-8">
-      <div>
-        <h1 className="text-3xl font-extrabold text-slate-900">
-          Prestataires & Dépanneurs à Abidjan
-        </h1>
-        <p className="text-slate-600 mt-1">
-          Découvrez nos professionnels de l'automobile vérifiés et géolocalisés.
-        </p>
-      </div>
-
-      {/* Filtres */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <Filter className="w-4 h-4 text-orange-600" />
-          <span>Filtrer par :</span>
-        </div>
-
-        <select
-          value={selectedDistrict}
-          onChange={(e) => setSelectedDistrict(e.target.value)}
-          className="px-3.5 py-2 rounded-xl border border-slate-300 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-        >
-          {ABIDJAN_COMMUNES.map((com) => (
-            <option key={com} value={com}>{com}</option>
-          ))}
-        </select>
-
-        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={emergencyOnly}
-            onChange={(e) => setEmergencyOnly(e.target.checked)}
-            className="rounded text-orange-600 focus:ring-orange-500 w-4 h-4"
-          />
-          <span className="font-medium">Disponible pour urgence immédiate (24/7)</span>
-        </label>
-      </div>
-
-      {/* Liste */}
-      {loading ? (
-        <div className="py-20 text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-orange-600 mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">Recherche des dépanneurs dans votre zone...</p>
-        </div>
-      ) : providers.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4">
-          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto">
-            <Wrench className="w-6 h-6" />
-          </div>
-          <h3 className="font-bold text-slate-800">Aucun prestataire trouvé pour ces critères</h3>
-          <p className="text-sm text-slate-500 max-w-md mx-auto">
-            Essayez de réinitialiser le filtre de commune ou lancez directement une demande d'assistance automatique.
-          </p>
-          <Link
-            href="/assistance"
-            className="inline-flex items-center gap-2 bg-orange-600 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition"
-          >
-            Lancer un appel d'urgence
+    <section className="py-8">
+      <div className="max-w-[1120px] mx-auto px-6">
+        <div className="flex justify-between gap-3 flex-wrap items-center mb-5">
+          <h1 className="text-[28px] font-extrabold m-0">{title}</h1>
+          <Link href="/" className="btn-outline">
+            <Pencil className="w-4 h-4 mr-2" />
+            Modifier la recherche
           </Link>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {providers.map((p) => (
-            <div
-              key={p.id}
-              className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between space-y-4"
+
+        <div className="flex gap-5 flex-wrap items-start">
+          {/* Filtres */}
+          <aside className="card w-[260px] gap-3 self-start">
+            <div className="font-extrabold">Filtres</div>
+
+            <select
+              value={selectedDistrict}
+              onChange={(e) => setSelectedDistrict(e.target.value)}
+              className="field mt-2"
             >
-              <div>
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-bold text-lg text-slate-900">
-                    {p.business_name || `${p.first_name} ${p.last_name}`}
-                  </h3>
-                  <div className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-lg text-xs font-bold">
-                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    <span>{parseFloat(p.rating || 0).toFixed(1)}</span>
-                  </div>
+              {ABIDJAN_COMMUNES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            <label className="flex gap-2.5 items-center min-h-[36px] cursor-pointer text-sm font-medium">
+              <input type="checkbox" checked={availableOnly} onChange={(e) => setAvailableOnly(e.target.checked)} className="w-5 h-5 accent-accent" />
+              Disponible maintenant
+            </label>
+            <label className="flex gap-2.5 items-center min-h-[36px] cursor-pointer text-sm font-medium">
+              <input type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} className="w-5 h-5 accent-accent" />
+              Vérifié niveau 2 et plus
+            </label>
+
+            <div className="font-extrabold mt-2">Trier par</div>
+            <label className="flex gap-2.5 items-center min-h-[36px] cursor-pointer text-sm font-medium">
+              <input type="radio" name="sort" checked={sortBy === 'rapide'} onChange={() => setSortBy('rapide')} className="w-5 h-5 accent-accent" />
+              Le plus rapide
+            </label>
+            <label className="flex gap-2.5 items-center min-h-[36px] cursor-pointer text-sm font-medium">
+              <input type="radio" name="sort" checked={sortBy === 'note'} onChange={() => setSortBy('note')} className="w-5 h-5 accent-accent" />
+              Mieux noté
+            </label>
+          </aside>
+
+          {/* Résultats */}
+          {loading ? (
+            <div className="flex-1 min-w-[340px] py-16 text-center">
+              <Loader2 className="w-8 h-8 animate-spin text-accent mx-auto mb-3" />
+              <p className="text-muted text-sm">Recherche des prestataires dans votre zone...</p>
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="card flex-1 min-w-[340px] text-center py-12">
+              <h3 className="font-extrabold text-lg">Aucun prestataire trouvé</h3>
+              <p className="text-muted text-sm mt-1">
+                Essayez de réinitialiser le filtre de commune ou lancez directement une demande.
+              </p>
+              <Link href="/assistance" className="btn-primary mt-4">Créer une demande</Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 flex-1 min-w-[340px] items-start">
+              <div className="flex flex-col gap-3">
+                {sorted.map((p) => (
+                  <article key={p.id} className="card">
+                    <div className="flex gap-4 flex-wrap items-center">
+                      <IdentityAvatar name={p.business_name || `${p.first_name || ''} ${p.last_name || ''}`} src={p.logo_url} className="w-16 h-16 border border-line" />
+                      <div className="flex-1 min-w-[220px]">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Link href={`/providers/${p.id}`} className="font-extrabold text-lg hover:underline">
+                            {p.business_name || `${p.first_name} ${p.last_name}`}
+                          </Link>
+                          {p.emergency_ready && <span className="badge-orange">Le plus rapide</span>}
+                        </div>
+                        <div className="text-muted text-sm">{p.bio || 'Professionnel de proximité'}</div>
+                        <div className="flex gap-2 flex-wrap mt-1.5 items-center">
+                          {p.verification_status === 'verified' ? (
+                            <span className="badge-green">✓ Vérifié niv. 2</span>
+                          ) : (
+                            <span className="badge-orange">Profil en cours de vérification</span>
+                          )}
+                          <span className="text-muted text-sm flex items-center gap-1">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            {parseFloat(p.rating || 0).toFixed(1)} · {p.total_reviews || 0} avis
+                          </span>
+                          <span className="text-muted text-sm flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5" />
+                            {p.district ? `${p.district}, Abidjan` : 'Grand Abidjan'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a href={`tel:${p.phone}`} className="btn-outline">Appeler</a>
+                        <Link href={`/assistance?provider_id=${p.id}`} className="btn-primary">Demander</Link>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              <div className="hidden lg:block min-w-[300px]">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h2 className="m-0 text-sm font-extrabold">Carte des prestataires</h2>
+                  <span className="text-xs text-muted">{mapMarkers.length} point{mapMarkers.length === 1 ? '' : 's'} GPS</span>
                 </div>
-
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
-                  <MapPin className="w-3.5 h-3.5 text-orange-500" />
-                  <span>{p.district ? `${p.district}, Abidjan` : 'Grand Abidjan'}</span>
-                </div>
-
-                <p className="text-sm text-slate-600 line-clamp-2">
-                  {p.bio || 'Professionnel de l’assistance mécanique et du dépannage automobile d’urgence.'}
-                </p>
-
-                <div className="flex items-center gap-2 mt-4 text-xs">
-                  <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md font-semibold">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Profil Vérifié
-                  </span>
-                  {p.emergency_ready && (
-                    <span className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 px-2.5 py-1 rounded-md font-semibold">
-                      SOS 24/7
-                    </span>
+                <div className="relative">
+                  <InteractiveMap markers={mapMarkers} height="520px" zoom={12} />
+                  {mapMarkers.length === 0 && (
+                    <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-white/95 px-3 py-2 text-center text-xs text-muted shadow-sm">
+                      Les positions GPS ne sont pas encore disponibles pour ces prestataires.
+                    </div>
                   )}
                 </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Tarif indicatif</span>
-                  <span className="text-sm font-bold text-slate-800">
-                    {p.hourly_rate ? `${p.hourly_rate} FCFA` : 'Sur devis'}
-                  </span>
-                </div>
-
-                <Link
-                  href={`/assistance?provider_id=${p.id}`}
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition"
-                >
-                  Solliciter
-                </Link>
+                <p className="mt-1 text-right text-[11px] text-muted">© OpenStreetMap contributors</p>
               </div>
             </div>
-          ))}
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </section>
   );
 }
-
