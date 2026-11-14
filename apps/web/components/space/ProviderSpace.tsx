@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Loader2, Plus, X, Check, Star, Wallet, TrendingUp, Wrench, ImagePlus, Download, WandSparkles, LocateFixed, MapPin } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
+import { categoryIcon, type Category } from '../../lib/categoryIcons';
 import { download, fileUrl, generateLogoFile, uploadImage } from '../../lib/media';
 import { getBrowserPosition } from '../../lib/geolocation';
 import IdentityAvatar from '../IdentityAvatar';
@@ -49,7 +50,10 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [bio, setBio] = useState('');
   const [specialties, setSpecialties] = useState<string[]>([]);
-  const [specInput, setSpecInput] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [categoriesRetry, setCategoriesRetry] = useState(0);
   const [hourlyRate, setHourlyRate] = useState('');
   const [availability, setAvailability] = useState(true);
   const [emergencyReady, setEmergencyReady] = useState(false);
@@ -82,12 +86,37 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const addSpec = () => {
-    const v = specInput.trim();
-    if (v && !specialties.includes(v) && specialties.length < 20) {
-      setSpecialties([...specialties, v]);
+  useEffect(() => {
+    let active = true;
+    setCategoriesLoading(true);
+    setCategoriesError(null);
+    fetchApi('/services/categories')
+      .then((data) => {
+        if (active) setCategories(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        if (active) setCategoriesError(err.message || 'Impossible de charger les services proposés');
+      })
+      .finally(() => {
+        if (active) setCategoriesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [categoriesRetry]);
+
+  const toggleSpecialty = (name: string) => {
+    if (specialties.includes(name)) {
+      setSpecialties(specialties.filter((specialty) => specialty !== name));
+      return;
     }
-    setSpecInput('');
+    if (specialties.length >= 20) {
+      setError('Vous pouvez sélectionner 20 services au maximum.');
+      return;
+    }
+    setError(null);
+    setSpecialties([...specialties, name]);
   };
 
   const save = async (e: React.FormEvent) => {
@@ -285,21 +314,46 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
             ))}
             {specialties.length === 0 && <span className="text-muted text-sm">Aucune spécialité ajoutée</span>}
           </div>
-          <div className="flex gap-2">
-            <input
-              className="field"
-              value={specInput}
-              onChange={(e) => setSpecInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ',') {
-                  e.preventDefault();
-                  addSpec();
-                }
-              }}
-              placeholder="Ex. : Plomberie, Fuite d’eau…"
-            />
-            <button type="button" onClick={addSpec} className="btn-outline min-h-[44px] px-4">Ajouter</button>
-          </div>
+          <p className="text-muted text-sm mb-2">Choisissez les services que vous proposez parmi le catalogue ASSISTCI.</p>
+          {categoriesLoading ? (
+            <p className="text-muted text-sm">Chargement des services proposés…</p>
+          ) : categoriesError ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-red-700">{categoriesError}</span>
+              <button type="button" onClick={() => setCategoriesRetry((retry) => retry + 1)} className="btn-outline min-h-[36px] px-3">
+                Réessayer
+              </button>
+            </div>
+          ) : categories.length === 0 ? (
+            <p className="text-muted text-sm">Aucun service proposé n’est disponible pour le moment.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {categories.map((category) => {
+                const Icon = categoryIcon(category.icon_name);
+                const checked = specialties.includes(category.name);
+                return (
+                  <label
+                    key={category.id}
+                    className={`flex items-start gap-3 rounded-card border p-3 cursor-pointer transition ${
+                      checked ? 'border-accent bg-accent-light/50' : 'border-line hover:border-accent/50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleSpecialty(category.name)}
+                      className="mt-1 h-4 w-4 flex-none"
+                    />
+                    <Icon className="w-4 h-4 mt-1 flex-none text-accent" />
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-sm">{category.name}</span>
+                      {category.description && <span className="block text-xs text-muted mt-0.5">{category.description}</span>}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
