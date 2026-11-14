@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Loader2, User, Lock, ShieldCheck, CheckCircle2, ImagePlus } from 'lucide-react';
-import { fetchApi, getCurrentUser, setCurrentUser } from '../../lib/api';
+import { Loader2, User, Lock, ShieldCheck, CheckCircle2, ImagePlus, Mail, Phone } from 'lucide-react';
+import { fetchApi, getCurrentUser, setCurrentUser, setAuthSession } from '../../lib/api';
 import IdentityAvatar from '../../components/IdentityAvatar';
 import { uploadImage } from '../../lib/media';
 
@@ -29,6 +29,12 @@ export default function AccountPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [sendingVerification, setSendingVerification] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
 
   useEffect(() => {
     if (!getCurrentUser()) {
@@ -103,10 +109,13 @@ export default function AccountPage() {
     }
     setSavingPassword(true);
     try {
-      await fetchApi('/auth/me/password', {
+      const res = await fetchApi('/auth/me/password', {
         method: 'PATCH',
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       });
+      if (res?.token) {
+        setAuthSession(res.token, res.refresh_token);
+      }
       setNotice('Mot de passe modifié.');
       setCurrentPassword('');
       setNewPassword('');
@@ -115,6 +124,56 @@ export default function AccountPage() {
       setError(err.message || 'Impossible de modifier le mot de passe');
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setError(null);
+    setNotice(null);
+    setSendingVerification(true);
+    try {
+      const res = await fetchApi('/auth/resend-verification', { method: 'POST' });
+      setNotice(res.message || 'Email de vérification envoyé.');
+    } catch (err: any) {
+      setError(err.message || 'Impossible d’envoyer l’email de vérification');
+    } finally {
+      setSendingVerification(false);
+    }
+  };
+
+  const handleRequestOtp = async () => {
+    setError(null);
+    setNotice(null);
+    setSendingOtp(true);
+    try {
+      const res = await fetchApi('/auth/phone/request-otp', { method: 'POST' });
+      setOtpSent(true);
+      setNotice(res.message || 'Code envoyé par SMS.');
+    } catch (err: any) {
+      setError(err.message || 'Impossible d’envoyer le code SMS');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setNotice(null);
+    setVerifyingOtp(true);
+    try {
+      const res = await fetchApi('/auth/phone/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({ code: otpCode }),
+      });
+      setUser((prev: any) => (prev ? { ...prev, phone_verified: true } : prev));
+      setOtpSent(false);
+      setOtpCode('');
+      setNotice(res.message || 'Numéro de téléphone vérifié.');
+    } catch (err: any) {
+      setError(err.message || 'Code invalide');
+    } finally {
+      setVerifyingOtp(false);
     }
   };
 
@@ -229,6 +288,81 @@ export default function AccountPage() {
           <Link href="/kyc" className="btn-outline self-start">Gérer ma vérification</Link>
         </div>
       )}
+
+      {/* Vérification du compte */}
+      <div className="card gap-4 mb-5">
+        <h2 className="font-extrabold text-lg flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5 text-accent" />
+          Vérification du compte
+        </h2>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
+          <div>
+            <p className="font-semibold flex items-center gap-2">
+              <Mail className="w-4 h-4 text-muted" /> {user?.email}
+            </p>
+            <p className="text-xs text-muted">
+              {user?.email_verified ? 'Adresse email vérifiée' : 'Adresse email non vérifiée'}
+            </p>
+          </div>
+          {user?.email_verified ? (
+            <span className="badge-green">Vérifié</span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              disabled={sendingVerification}
+              className="btn-outline disabled:opacity-50"
+            >
+              {sendingVerification ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Renvoyer l’email'}
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-semibold flex items-center gap-2">
+              <Phone className="w-4 h-4 text-muted" /> {user?.phone}
+            </p>
+            <p className="text-xs text-muted">
+              {user?.phone_verified ? 'Numéro de téléphone vérifié' : 'Numéro de téléphone non vérifié'}
+            </p>
+          </div>
+          {user?.phone_verified ? (
+            <span className="badge-green">Vérifié</span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleRequestOtp}
+              disabled={sendingOtp}
+              className="btn-outline disabled:opacity-50"
+            >
+              {sendingOtp ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Envoyer un code'}
+            </button>
+          )}
+        </div>
+
+        {otpSent && !user?.phone_verified && (
+          <form onSubmit={handleVerifyOtp} className="flex flex-wrap items-end gap-3 border-t border-line pt-4">
+            <div className="flex-1 min-w-[160px]">
+              <label className="field-label mb-1">Code reçu par SMS</label>
+              <input
+                className="field"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                required
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                placeholder="123456"
+              />
+            </div>
+            <button type="submit" disabled={verifyingOtp} className="btn-navy disabled:opacity-50">
+              {verifyingOtp ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Valider'}
+            </button>
+          </form>
+        )}
+      </div>
 
       {/* Sécurité */}
       <form onSubmit={handleChangePassword} className="card gap-4">

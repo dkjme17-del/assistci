@@ -13,9 +13,9 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'ASSISTCI - Dépannage auto & services de proximité à Abidjan',
+  title: 'ASSISTCI - Dépannage auto & services de proximité en Côte d’Ivoire',
   description:
-    'Trouver. Être dépanné. Faire confiance. Dépanneurs et garages de proximité à Abidjan : comparez, demandez une intervention et suivez-la au même endroit.',
+    'Trouver. Être dépanné. Faire confiance. Dépanneurs et garages de proximité en Côte d’Ivoire : comparez, demandez une intervention et suivez-la au même endroit.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

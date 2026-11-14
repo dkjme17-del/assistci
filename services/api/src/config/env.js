@@ -30,7 +30,29 @@ const schema = z
     DATABASE_URL: z.union([z.string().url(), z.literal('')]).optional(),
 
     JWT_SECRET: z.string().min(16, 'JWT_SECRET doit contenir au moins 16 caractères'),
-    JWT_EXPIRES_IN: z.string().default('7d'),
+    JWT_EXPIRES_IN: z.string().default('1h'),
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+
+    APP_URL: z.string().url().default('http://localhost:3001'),
+
+    EMAIL_PROVIDER: z.enum(['console', 'resend']).default('console'),
+    EMAIL_FROM: z.string().default('ASSISTCI <no-reply@assistci.ci>'),
+    RESEND_API_KEY: z.string().optional(),
+
+    SMS_PROVIDER: z.enum(['console', 'http']).default('console'),
+    SMS_HTTP_URL: z.string().url().optional(),
+    SMS_HTTP_TOKEN: z.string().optional(),
+
+    PAYMENTS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    WAVE_API_KEY: z.string().optional(),
+    WAVE_BASE_URL: z.string().url().default('https://api.wave.com/v1'),
+    WAVE_WEBHOOK_SECRET: z.string().optional(),
+    PAYMENT_HTTP_URL: z.string().url().optional(),
+    PAYMENT_HTTP_TOKEN: z.string().optional(),
+    PAYMENT_WEBHOOK_SECRET: z.string().optional(),
 
     CORS_ORIGINS: z.string().default('http://localhost:3001'),
 
@@ -40,6 +62,10 @@ const schema = z
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+    AUTH_STRICT_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
+    AUTH_STRICT_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+    LOGIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+    LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
   })
   .superRefine((val, ctx) => {
     if (val.NODE_ENV === 'production') {
@@ -100,6 +126,31 @@ const config = {
       },
   jwtSecret: env.JWT_SECRET,
   jwtExpiresIn: env.JWT_EXPIRES_IN,
+  refreshTokenTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
+  appUrl: env.APP_URL.replace(/\/$/, ''),
+  email: {
+    provider: env.EMAIL_PROVIDER,
+    from: env.EMAIL_FROM,
+    apiKey: env.RESEND_API_KEY,
+  },
+  sms: {
+    provider: env.SMS_PROVIDER,
+    url: env.SMS_HTTP_URL,
+    token: env.SMS_HTTP_TOKEN,
+  },
+  payments: {
+    enabled: env.PAYMENTS_ENABLED,
+    wave: {
+      apiKey: env.WAVE_API_KEY,
+      baseUrl: env.WAVE_BASE_URL.replace(/\/$/, ''),
+      webhookSecret: env.WAVE_WEBHOOK_SECRET,
+    },
+    http: {
+      url: env.PAYMENT_HTTP_URL,
+      token: env.PAYMENT_HTTP_TOKEN,
+      webhookSecret: env.PAYMENT_WEBHOOK_SECRET,
+    },
+  },
   corsOrigins: env.CORS_ORIGINS.split(',')
     .map((o) => o.trim())
     .filter(Boolean),
@@ -112,6 +163,12 @@ const config = {
     windowMs: env.RATE_LIMIT_WINDOW_MS,
     max: env.RATE_LIMIT_MAX,
     authMax: env.AUTH_RATE_LIMIT_MAX,
+    strictWindowMs: env.AUTH_STRICT_RATE_LIMIT_WINDOW_MS,
+    strictMax: env.AUTH_STRICT_RATE_LIMIT_MAX,
+  },
+  loginLock: {
+    maxAttempts: env.LOGIN_MAX_ATTEMPTS,
+    lockMinutes: env.LOGIN_LOCK_MINUTES,
   },
 };
 

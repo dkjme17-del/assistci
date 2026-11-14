@@ -19,19 +19,9 @@ import {
   ImagePlus,
   Download,
 } from 'lucide-react';
-import dynamic from 'next/dynamic';
 import { fetchApi, getCurrentUser } from '../../../lib/api';
 import { download, downloadMissionReceipt, fileUrl, uploadImage } from '../../../lib/media';
 import LiveLocationTracker from '../../../components/LiveLocationTracker';
-
-const InteractiveMap = dynamic(() => import('../../../components/InteractiveMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="h-64 bg-line rounded-2xl flex items-center justify-center text-muted text-xs">
-      Chargement de la carte OpenStreetMap...
-    </div>
-  ),
-});
 
 export default function RequestDetailPage() {
   const params = useParams();

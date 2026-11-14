@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { Loader2, Plus, X, Check, Star, Wallet, TrendingUp, Wrench, ImagePlus, Download, WandSparkles } from 'lucide-react';
+import { Loader2, Plus, X, Check, Star, Wallet, TrendingUp, Wrench, ImagePlus, Download, WandSparkles, LocateFixed, MapPin } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
 import { download, fileUrl, generateLogoFile, uploadImage } from '../../lib/media';
+import { getBrowserPosition } from '../../lib/geolocation';
 import IdentityAvatar from '../IdentityAvatar';
 import RequestCard, { isDone } from './RequestCard';
 import NotificationsPanel from './NotificationsPanel';
@@ -28,6 +29,14 @@ const DISTRICT_SUGGESTIONS = [
   'Port-Bouët', 'Bingerville', 'Riviera', 'Angré',
 ];
 
+interface AreaDraft {
+  city: string;
+  district: string;
+  radius_km: number;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 function ActivityEditor({ onSaved }: { onSaved: () => void }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,7 +53,8 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
   const [hourlyRate, setHourlyRate] = useState('');
   const [availability, setAvailability] = useState(true);
   const [emergencyReady, setEmergencyReady] = useState(false);
-  const [areas, setAreas] = useState<{ city: string; district: string; radius_km: number }[]>([]);
+  const [areas, setAreas] = useState<AreaDraft[]>([]);
+  const [locatingArea, setLocatingArea] = useState<number | null>(null);
 
   useEffect(() => {
     fetchApi('/providers/me')
@@ -63,6 +73,8 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
             city: a.city || 'Abidjan',
             district: a.district || '',
             radius_km: a.radius_km || 10,
+            latitude: a.latitude != null ? Number(a.latitude) : null,
+            longitude: a.longitude != null ? Number(a.longitude) : null,
           }))
         );
       })
@@ -96,14 +108,19 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
           logo_url: logoUrl,
         }),
       });
-      if (areas.length > 0) {
+      const areaPayload = areas
+        .filter((a) => a.district.trim() || (a.latitude != null && a.longitude != null))
+        .map((a) => ({
+          city: a.city || 'Abidjan',
+          district: a.district.trim() || undefined,
+          radius_km: a.radius_km || 10,
+          latitude: a.latitude,
+          longitude: a.longitude,
+        }));
+      if (areaPayload.length > 0) {
         await fetchApi('/providers/me/areas', {
           method: 'PUT',
-          body: JSON.stringify({
-            areas: areas
-              .filter((a) => a.district.trim())
-              .map((a) => ({ city: a.city || 'Abidjan', district: a.district, radius_km: a.radius_km || 10 })),
-          }),
+          body: JSON.stringify({ areas: areaPayload }),
         });
       }
       setNotice('Activité enregistrée.');
@@ -113,6 +130,33 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
     } finally {
       setSaving(false);
     }
+  };
+
+  const shareAreaPosition = async (index: number) => {
+    setError(null);
+    setNotice(null);
+    setLocatingArea(index);
+    try {
+      const position = await getBrowserPosition();
+      setAreas((current) =>
+        current.map((area, i) =>
+          i === index
+            ? { ...area, latitude: position.latitude, longitude: position.longitude }
+            : area
+        )
+      );
+      setNotice('Position GPS partagée. Enregistrez pour la publier sur la carte.');
+    } catch (err: any) {
+      setError(err.message || 'Impossible de récupérer votre position');
+    } finally {
+      setLocatingArea(null);
+    }
+  };
+
+  const clearAreaPosition = (index: number) => {
+    setAreas((current) =>
+      current.map((area, i) => (i === index ? { ...area, latitude: null, longitude: null } : area))
+    );
   };
 
   const updateLogo = async (file: File) => {
@@ -281,13 +325,43 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
         <p className="text-muted text-sm -mt-2">Ajoutez les communes où vous acceptez des missions. Sans zone, vous verrez toutes les demandes ouvertes.</p>
         <div className="flex flex-col gap-2">
           {areas.map((a, i) => (
-            <div key={i} className="flex gap-2 items-center flex-wrap">
-              <input className="field flex-1 min-w-[140px]" value={a.city} onChange={(e) => setAreas(areas.map((x, j) => (j === i ? { ...x, city: e.target.value } : x)))} placeholder="Ville" />
-              <input className="field flex-1 min-w-[140px]" list="districts" value={a.district} onChange={(e) => setAreas(areas.map((x, j) => (j === i ? { ...x, district: e.target.value } : x)))} placeholder="Commune / quartier" />
-              <input type="number" min={1} className="field w-[110px]" value={a.radius_km} onChange={(e) => setAreas(areas.map((x, j) => (j === i ? { ...x, radius_km: Number(e.target.value) } : x)))} placeholder="Rayon km" />
-              <button type="button" onClick={() => setAreas(areas.filter((_, j) => j !== i))} className="text-accent p-2">
-                <X className="w-5 h-5" />
-              </button>
+            <div key={i} className="rounded-card border border-line p-3 flex flex-col gap-2">
+              <div className="flex gap-2 items-center flex-wrap">
+                <input className="field flex-1 min-w-[140px]" value={a.city} onChange={(e) => setAreas(areas.map((x, j) => (j === i ? { ...x, city: e.target.value } : x)))} placeholder="Ville" />
+                <input className="field flex-1 min-w-[140px]" list="districts" value={a.district} onChange={(e) => setAreas(areas.map((x, j) => (j === i ? { ...x, district: e.target.value } : x)))} placeholder="Commune / quartier" />
+                <input type="number" min={1} className="field w-[110px]" value={a.radius_km} onChange={(e) => setAreas(areas.map((x, j) => (j === i ? { ...x, radius_km: Number(e.target.value) } : x)))} placeholder="Rayon km" />
+                <button type="button" onClick={() => setAreas(areas.filter((_, j) => j !== i))} className="text-accent p-2" aria-label="Supprimer cette zone">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap text-xs">
+                <button
+                  type="button"
+                  onClick={() => void shareAreaPosition(i)}
+                  disabled={locatingArea === i}
+                  className="btn-outline min-h-[36px] px-3 text-xs disabled:opacity-50"
+                >
+                  {locatingArea === i ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <LocateFixed className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {a.latitude != null && a.longitude != null ? 'Mettre à jour ma position' : 'Partager ma position'}
+                </button>
+                {a.latitude != null && a.longitude != null ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                      <MapPin className="w-3.5 h-3.5" />
+                      Position GPS partagée
+                    </span>
+                    <button type="button" onClick={() => clearAreaPosition(i)} className="font-semibold text-muted hover:text-accent">
+                      Retirer
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-muted">Sans position GPS, cette zone n’apparaît pas sur la carte des prestataires.</span>
+                )}
+              </div>
             </div>
           ))}
           <datalist id="districts">
@@ -295,7 +369,7 @@ function ActivityEditor({ onSaved }: { onSaved: () => void }) {
               <option key={d} value={d} />
             ))}
           </datalist>
-          <button type="button" onClick={() => setAreas([...areas, { city: 'Abidjan', district: '', radius_km: 10 }])} className="btn-outline self-start min-h-[40px] text-sm">
+          <button type="button" onClick={() => setAreas([...areas, { city: 'Abidjan', district: '', radius_km: 10, latitude: null, longitude: null }])} className="btn-outline self-start min-h-[40px] text-sm">
             <Plus className="w-4 h-4 mr-2" />
             Ajouter une zone
           </button>

@@ -1,18 +1,41 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001/api';
 
+const TOKEN_KEY = 'assistci_token';
+const REFRESH_TOKEN_KEY = 'assistci_refresh_token';
+
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('assistci_token');
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setAuthToken(token: string): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('assistci_token', token);
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+export function setRefreshToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (token) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
+}
+
+export function setAuthSession(token: string, refreshToken?: string | null): void {
+  setAuthToken(token);
+  if (refreshToken) setRefreshToken(refreshToken);
 }
 
 export function removeAuthToken(): void {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem('assistci_token');
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem('assistci_user');
 }
 
@@ -32,21 +55,78 @@ export function setCurrentUser(user: any): void {
   localStorage.setItem('assistci_user', JSON.stringify(user));
 }
 
-export async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  const token = getAuthToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> || {}),
-  };
+let refreshPromise: Promise<string | null> | null = null;
 
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return null;
+
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${API_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        if (!response.ok) {
+          removeAuthToken();
+          return null;
+        }
+
+        const data = await response.json().catch(() => null);
+        if (!data?.token || !data?.refresh_token) {
+          removeAuthToken();
+          return null;
+        }
+
+        setAuthToken(data.token);
+        setRefreshToken(data.refresh_token);
+        return data.token as string;
+      } catch {
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  return refreshPromise;
+}
+
+async function authenticatedFetch(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const buildRequest = (token: string | null) => {
+    const headers: Record<string, string> = {
+      ...((options.headers as Record<string, string>) || {}),
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    return fetch(`${API_URL}${endpoint}`, { ...options, headers });
+  };
+
+  let response = await buildRequest(getAuthToken());
+
+  if (response.status === 401 && !endpoint.startsWith('/auth/refresh') && getRefreshToken()) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      response = await buildRequest(newToken);
+    }
+  }
+
+  return response;
+}
+
+export async function fetchApi(endpoint: string, options: RequestInit = {}) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  const response = await authenticatedFetch(endpoint, { ...options, headers });
 
   const data = await response.json().catch(() => null);
 
@@ -58,10 +138,8 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 }
 
 export async function postApiForm(endpoint: string, formData: FormData) {
-  const token = getAuthToken();
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const response = await authenticatedFetch(endpoint, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
   const data = await response.json().catch(() => null);
@@ -74,10 +152,7 @@ export async function postApiForm(endpoint: string, formData: FormData) {
 }
 
 export async function downloadApiFile(endpoint: string, filename: string): Promise<void> {
-  const token = getAuthToken();
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const response = await authenticatedFetch(endpoint);
   if (!response.ok) {
     const data = await response.json().catch(() => null);
     throw new Error(data?.message || data?.error || 'Impossible de récupérer le document');
@@ -92,4 +167,3 @@ export async function downloadApiFile(endpoint: string, filename: string): Promi
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
-

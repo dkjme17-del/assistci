@@ -314,7 +314,7 @@ function SearchResultsContent() {
                 </div>
               )}
               </div>
-            <p className="mt-1 text-right text-[11px] text-muted">© OpenStreetMap contributors</p>
+            <p className="mt-1 text-right text-[11px] text-muted">© OpenFreeMap · OpenStreetMap</p>
           </aside>
         </div>
       </div>

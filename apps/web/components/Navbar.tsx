@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { User, LogOut, Menu, X, ChevronDown, LayoutGrid, IdCard, Moon, Sun } from 'lucide-react';
-import { getCurrentUser, removeAuthToken, fetchApi } from '../lib/api';
+import { getCurrentUser, getRefreshToken, removeAuthToken, fetchApi } from '../lib/api';
 import { categoryIcon, type Category } from '../lib/categoryIcons';
 
 export default function Navbar() {
@@ -35,7 +35,16 @@ export default function Navbar() {
       .catch(() => setCategories([]));
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      await fetchApi('/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
+      });
+    } catch {
+      // La déconnexion locale reste valable même si l'appel réseau échoue.
+    }
     removeAuthToken();
     setUser(null);
     router.push('/');

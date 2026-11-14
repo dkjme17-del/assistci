@@ -11,6 +11,12 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
+      - key: APP_URL
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: AI_SERVICE_URL
@@ -18,4 +24,30 @@ services:
       - key: FILE_UPLOADS_ENABLED
         value: "false"
       - key: CORS_ORIGINS
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: EMAIL_FROM
+        value: ASSISTCI <no-reply@assistci.ci>
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SMS_PROVIDER
+        sync: false
+      - key: SMS_HTTP_URL
+        sync: false
+      - key: SMS_HTTP_TOKEN
+        sync: false
+      - key: PAYMENTS_ENABLED
+        value: "false"
+      - key: WAVE_API_KEY
+        sync: false
+      - key: WAVE_BASE_URL
+        value: https://api.wave.com/v1
+      - key: WAVE_WEBHOOK_SECRET
+        sync: false
+      - key: PAYMENT_HTTP_URL
+        sync: false
+      - key: PAYMENT_HTTP_TOKEN
+        sync: false
+      - key: PAYMENT_WEBHOOK_SECRET
         sync: false

@@ -4,7 +4,7 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Car, Lock, Mail, Loader2, ArrowRight } from 'lucide-react';
-import { fetchApi, setAuthToken, setCurrentUser } from '../../lib/api';
+import { fetchApi, setAuthSession, setCurrentUser } from '../../lib/api';
 
 function LoginContent() {
   const router = useRouter();
@@ -27,7 +27,7 @@ function LoginContent() {
         body: JSON.stringify({ login, password }),
       });
 
-      setAuthToken(res.token);
+      setAuthSession(res.token, res.refresh_token);
       setCurrentUser(res.user);
 
       router.push(redirect);
@@ -85,6 +85,12 @@ function LoginContent() {
                 className="field pl-10"
               />
             </div>
+          </div>
+
+          <div className="text-right">
+            <Link href="/forgot-password" className="text-xs font-semibold text-accent hover:underline">
+              Mot de passe oublié ?
+            </Link>
           </div>
 
           <button

@@ -43,7 +43,7 @@ export default function HomePage() {
       <section className="bg-navy text-white py-16">
         <div className="max-w-[1120px] mx-auto px-6">
           <h1 className="m-0 text-[44px] leading-[1.1] font-extrabold max-w-[760px]">
-            Tous vos services à Abidjan. Trouvez, demandez, faites confiance.
+            Tous vos services en Côte d’Ivoire. Trouvez, demandez, faites confiance.
           </h1>
           <p className="max-w-[640px] text-lg mt-4 mb-7 text-[#E2E8F0]">
             Dépannage auto, plomberie, électricité, ménage, jardinage et plus : comparez des

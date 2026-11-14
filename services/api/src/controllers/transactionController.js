@@ -94,14 +94,31 @@ async function updateTransactionStatus(req, res) {
       return res.status(400).json({ error: `Statut invalide. Autorisés : ${validStatuses.join(', ')}` });
     }
 
-    const ownerRes = await db.query('SELECT client_id FROM transactions WHERE id = $1', [id]);
+    const ownerRes = await db.query(
+      'SELECT client_id, payment_status FROM transactions WHERE id = $1',
+      [id]
+    );
     if (ownerRes.rows.length === 0) {
       return res.status(404).json({ error: 'Transaction introuvable' });
     }
 
+    const transaction = ownerRes.rows[0];
     const isAdmin = req.user.role === 'admin';
-    if (!isAdmin && ownerRes.rows[0].client_id !== userId) {
-      return res.status(403).json({ error: 'Action non autorisée sur cette transaction' });
+    const isOwner = Number(transaction.client_id) === Number(userId);
+
+    // Un client ne peut qu'annuler son propre paiement en attente.
+    // La confirmation et le remboursement sont réservés à l'administration
+    // (ou à un futur webhook de passerelle de paiement).
+    if (!isAdmin) {
+      if (!isOwner || payment_status !== 'failed') {
+        return res.status(403).json({
+          error: 'Action non autorisée',
+          message: 'Seul un administrateur peut confirmer ou rembourser un paiement.',
+        });
+      }
+      if (transaction.payment_status !== 'pending') {
+        return res.status(400).json({ error: 'Seule une transaction en attente peut être annulée' });
+      }
     }
 
     const result = await db.query(

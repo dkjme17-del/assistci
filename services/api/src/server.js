@@ -20,6 +20,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const providerRoutes = require('./routes/providerRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
+const paymentWebhookRoutes = require('./routes/paymentWebhookRoutes');
 const { UPLOADS_DIR, ensureUploadDirs } = require('./config/uploads');
 const { ensureKycUploadDir } = require('./config/kycStorage');
 
@@ -58,8 +59,15 @@ app.use(
   })
 );
 
-// Corps JSON limité
-app.use(express.json({ limit: '1mb' }));
+// Corps JSON limité (rawBody conservé pour vérifier les signatures des webhooks)
+app.use(
+  express.json({
+    limit: '1mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // Fichiers téléversés (avatars, logos, photos) servis en statique
 ensureUploadDirs();
@@ -122,6 +130,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/providers', providerRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/payments/webhook', paymentWebhookRoutes);
 
 // Route inexistante
 app.use((req, res) => {
@@ -142,7 +151,19 @@ app.use((err, req, res, next) => {
 });
 
 let server;
+let liveLocationCleanupTimer;
 if (require.main === module) {
+  const { cleanupExpiredLiveLocations } = require('./controllers/liveLocationController');
+  void cleanupExpiredLiveLocations().catch((err) => {
+    logger.error({ err }, 'Impossible de nettoyer les anciennes positions GPS');
+  });
+  liveLocationCleanupTimer = setInterval(() => {
+    void cleanupExpiredLiveLocations().catch((err) => {
+      logger.error({ err }, 'Impossible de nettoyer les anciennes positions GPS');
+    });
+  }, 60_000);
+  liveLocationCleanupTimer.unref();
+
   server = app.listen(config.port, () => {
     logger.info(`Serveur API ASSISTCI en écoute sur le port ${config.port} (${config.nodeEnv})`);
   });
@@ -151,6 +172,7 @@ if (require.main === module) {
 // Arrêt gracieux (Docker / orchestrateurs)
 function shutdown(signal) {
   logger.info(`Signal ${signal} reçu, arrêt en cours...`);
+  if (liveLocationCleanupTimer) clearInterval(liveLocationCleanupTimer);
   if (server) {
     server.close(() => {
       pool.end().finally(() => process.exit(0));

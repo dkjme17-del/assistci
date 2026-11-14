@@ -8,7 +8,8 @@ async function cleanupExpiredLiveLocations() {
   return db.query(
     `DELETE FROM request_live_locations
      WHERE updated_at < NOW() - ($1 * INTERVAL '1 second')`,
-    [LOCATION_EXPIRY_SECONDS]
+    [LOCATION_EXPIRY_SECONDS],
+    { retries: 1 }
   );
 }
 

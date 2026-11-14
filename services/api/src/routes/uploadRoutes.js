@@ -4,6 +4,7 @@ const multer = require('multer');
 const uploadController = require('../controllers/uploadController');
 const { upload } = require('../config/uploads');
 const { authenticateToken } = require('../middlewares/auth');
+const { uploadLimiter } = require('../middlewares/rateLimit');
 const { config } = require('../config/env');
 
 // POST /api/uploads/image?scope=avatar|logo|portfolio|request|brand
@@ -19,6 +20,7 @@ router.post(
     next();
   },
   authenticateToken,
+  uploadLimiter,
   (req, res, next) => {
     upload.single('file')(req, res, (err) => {
       if (err instanceof multer.MulterError) {
